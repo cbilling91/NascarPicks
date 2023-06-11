@@ -7,7 +7,7 @@ class NascarApiClient:
         self.api_key = self.get_api_key()
         current_date = date.today()
         self.today = current_date.strftime("%Y-%m-%d")
-        self.today = "2023-05-28"
+        #self.today = "2023-05-28"
         self.year = "2023"
 
     def get_api_key(self):
@@ -78,7 +78,7 @@ class NascarApiClient:
             total_points = 0
             for driver in drivers:
                 if driver in driver_points:
-                    total_points += driver_points[driver]["points"] + driver_points[driver]["bonus_points"]
+                    total_points += driver_points[driver]["points"] #+ driver_points[driver]["bonus_points"]
             user_points[user] = total_points
 
         return user_points
