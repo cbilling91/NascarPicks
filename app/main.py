@@ -1,59 +1,76 @@
-from fastapi import FastAPI
-from app.nascar import NascarApiClient
+from typing import Annotated
 
-nascar = NascarApiClient()
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+from fastui.forms import SelectSearchResponse, fastui_form
+from fastui import FastUI, AnyComponent, prebuilt_html, components as c
+from fastui.components.display import DisplayMode, DisplayLookup
+from fastui.events import GoToEvent, BackEvent
+from pydantic import BaseModel, Field
+
+from app.dependencies.nascar import get_full_race_schedule_model, get_race_drivers, DriverSelectForm
 
 app = FastAPI()
 
-@app.get("/events")
-async def get_events():
-    """Get NASCAR events"""
-    return nascar.get_schedule()
 
-@app.get("/events/current")
-async def get_current():
-    """Get details of specific NASCAR event"""
-    return nascar.get_schedule(current=True)
+@app.get("/api/", response_model=FastUI, response_model_exclude_none=True)
+async def get_schedule() -> list[AnyComponent]:
+    """Get NASCAR Schedule"""
+    schedule = get_full_race_schedule_model()
+    return [ 
+        c.Page(
+            components=[
+                c.Heading(text='Schedule', level=2),
+                c.Table(
+                    data=schedule,
+                    columns=[
+                        DisplayLookup(field='track_name', on_click=GoToEvent(url='/races/{race_id}/')),
+                        # the second is the date of birth, rendered as a date
+                        DisplayLookup(field='start_time_utc', mode=DisplayMode.date),
+                    ],
+                ),
+            ]
+        ),
+    ]
 
-@app.get("/events/{event}")
-async def get_event(event: str):
-    """Get details of specific NASCAR event"""
-    return nascar.get_schedule(id=event)
 
-# @app.get("/events/{event}/races/{race}")
-# async def get_race(event: str, race: str):
-#     """Get NASCAR race details"""
-#     return get_race_api(id=event, race, api_key)
+@app.get("/api/races/{race_id}/", response_model=FastUI, response_model_exclude_none=True)
+def form_content(race_id, initial={}): #{ 'search_select_multiple': [{"value": "221202", "label": "Kyle Benjamin"}, '374531', '219299']}
+    
+    class CurrentRaceDrivers(BaseModel):
+        search_select_multiple: list[str] = Field(title="Select 3 Drivers", description="drivers desc", json_schema_extra={'search_url': f'/api/races/{race_id}/drivers/'})
 
-@app.get("/events/current/races")
-async def get_current_races():
-    """Get details of specific NASCAR event"""
-    return nascar.get_schedule(current=True, races=True)
+    return [
+        c.Heading(text='Select Drivers', level=2),
+        c.Link(components=[c.Text(text='Back')], on_click=BackEvent()),
+        c.ModelForm(initial=initial, model=CurrentRaceDrivers, submit_url='/drivers/select'),
+    ]
 
-@app.get("/events/current/races/{race_id}")
-async def get_current_race(race_id: str):
-    """Get details of specific NASCAR event"""
-    return nascar.get_schedule(current=True, races=True, race_id=race_id)
 
-# @app.get("/drivers")
-# async def get_drivers():
-#     """Get NASCAR drivers"""
-#     return get_drivers_api(api_key)
+@app.post('/drivers/select', response_model=FastUI, response_model_exclude_none=True)
+async def select_form_post(form: Annotated[DriverSelectForm, fastui_form(DriverSelectForm)]):
+    print(form)
+    return [c.FireEvent(event=GoToEvent(url='/'), message="Thank you for your picks!!")]
 
-@app.get("/points/{race_id}")
-async def get_points(race_id: str):
-    """Get NASCAR driver points"""
-    return nascar.get_driver_points(race_id)
 
-@app.post("/points/{race_id}")
-async def get_points(race_id: str, user_picks: dict):
-    """Get NASCAR driver points"""
-    if not user_picks:
-        return {"error": "Invalid payload"}, 400
+@app.get("/api/races/{race_id}/drivers/", response_model=SelectSearchResponse)
+def user_profile(race_id: int) -> SelectSearchResponse:
+    """
+    User profile page, the frontend will fetch this when the user visits `/user/{id}/`.
+    """
+    #race = get_full_race_schedule_model(race_id)
+    drivers = get_race_drivers(race_id)
+    all_drivers = [{'label': driver.driver_name, 'value': str(driver.driver_id)} for driver in drivers]
+    all_drivers_options = [
+        {
+            'label': 'Drivers',
+            'options': all_drivers
+        }
+    ]
+    return SelectSearchResponse(options=all_drivers_options)
 
-    user_points = nascar.calculate_user_points(race_id, user_picks)
-    if user_points is None:
-        return {"error": "Failed to calculate points"}, 500
 
-    return user_points
-    #return nascar.get_points(race_id)
+@app.get('/{path:path}')
+async def html_landing() -> HTMLResponse:
+    """Simple HTML page which serves the React app, comes last as it matches all paths."""
+    return HTMLResponse(prebuilt_html(title='FastUI Demo'))

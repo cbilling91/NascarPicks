@@ -1,0 +1,52 @@
+name: Run Pytest
+
+on:
+  push:
+    branches:
+      - master  # Change this to the branch you want to trigger the workflow on
+
+jobs:
+  test:
+    name: Run Pytest
+    runs-on: ubuntu-latest  # You can choose a different runner if needed
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.11.7  # Specify the Python version you need
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt  # Replace with your project's requirements file if needed
+
+    - name: Run Pytest
+      run: pytest
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Login to GitHub Container Registry
+        run: echo ${{ secrets.CR_PAT }} | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+
+      - name: Build and push Docker image
+        env:
+          IMAGE_NAME: ghcr.io/NascarPicks/FrontEnd
+        run: |
+          docker buildx create --use
+          docker buildx build \
+            --file Dockerfile \
+            --tag $IMAGE_NAME:latest \
+            --push .
