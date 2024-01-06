@@ -3,7 +3,7 @@ name: Run Pytest
 on:
   push:
     branches:
-      - master  # Change this to the branch you want to trigger the workflow on
+      - main  # Change this to the branch you want to trigger the workflow on
 
 jobs:
   test:
