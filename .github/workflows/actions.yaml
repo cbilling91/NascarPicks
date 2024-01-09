@@ -43,7 +43,7 @@ jobs:
 
       - name: Build and push Docker image
         env:
-          IMAGE_NAME: ghcr.io/nascar-picks/front-end
+          IMAGE_NAME: ghcr.io/cbilling91/nascar-picks/front-end
         run: |
           docker buildx create --use
           docker buildx build \
