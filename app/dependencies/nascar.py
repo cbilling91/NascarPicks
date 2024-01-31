@@ -1,11 +1,41 @@
 import requests
 from datetime import datetime, timedelta
-from typing import Generator, Any, ClassVar, Type
+from typing import Generator, ClassVar, Type
+import json
+from functools import wraps
+import hashlib
+import base64
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
-from pydantic_core import PydanticCustomError
+from pydantic import BaseModel, Field
+from fastapi import Cookie, Response, HTTPException
+from dapr.clients import DaprClient
+from fastui.forms import SelectSearchResponse
+from cachetools import TTLCache
+from uuid import uuid4
 
-from app.models.nascar import ScheduleItem, Driver, RaceDriver
+from app.models.nascar import ScheduleItem, Driver, RaceDriver, DriverResult, DriverPoints, WeekendFeed, PlayerList, Player
+ 
+dapr_client = DaprClient()
+STATE_STORE = 'nascar-db'
+
+def cache_with_ttl(ttl_seconds):
+    cache = TTLCache(maxsize=100, ttl=ttl_seconds)
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Create a cache key using the function name and arguments
+            key = (func.__name__, args, frozenset(kwargs.items()))
+            # Check if the result is already in the cache
+            if key in cache:
+                return cache[key]
+            # If not, compute the result
+            result = func(*args, **kwargs)
+            # Cache the result with the specified expiration time
+            cache[key] = result
+            return result
+        return wrapper
+    return decorator
+
 
 def generate_pydantic_class(fields: Generator[tuple, None, None]) -> Type[BaseModel]:
     class_dict = {}
@@ -18,31 +48,15 @@ def generate_pydantic_class(fields: Generator[tuple, None, None]) -> Type[BaseMo
             class_dict[name] = (type_hint, field)
     return type("GeneratedPydanticClass", (BaseModel,), class_dict)
 
-class DriverSelectForm(BaseModel):
-    search_select_multiple: list[str] = Field(title="Select 3 Drivers", description="drivers desc", json_schema_extra={'search_url': '/api/drivers/1'})
-    #thing: str = Field(title="drivers", description="drivers desc", json_schema_extra={'search_url': '/api/drivers/1'})
 
-    @field_validator("search_select_multiple")
-    def validate_value(cls, search_select_multiple):
-        # Custom validation logic goes here
-        if len(search_select_multiple) != 3:
-            raise PydanticCustomError("lower", "Must pick 3 drivers exactly")
-        return search_select_multiple
-    
-    # @field_validator("thing")
-    # def validate_value(cls, thing):
-    #     # Custom validation logic goes here
-    #     if thing != "right":
-    #         raise PydanticCustomError("lower", "Must pick 3 drivers exactly")
-    #     return thing
-
+@cache_with_ttl(ttl_seconds=3600)
 def load_json(url):
     json_response = requests.get(url)
     return json_response.json()
 
 def get_full_schedule():
     # Get the NASCAR schedule feed
-    schedule_url = "https://cf.nascar.com/cacher/2023/1/schedule-feed.json"
+    schedule_url = "https://cf.nascar.com/cacher/2024/1/schedule-feed.json"
     schedule_response = requests.get(schedule_url)
     schedule_data = schedule_response.json()
     return schedule_data
@@ -61,7 +75,7 @@ def get_current_weekend_schedule():
 
     # Find the race for this weekend
     current_date = datetime.now()
-    #current_date = datetime.strptime("2023-11-03T15:05:00", "%Y-%m-%dT%H:%M:%S")
+    #current_date = datetime.strptime("2024-11-03T15:05:00", "%Y-%m-%dT%H:%M:%S")
     current_weekend_race = None
 
     for race in schedule_data:
@@ -75,23 +89,57 @@ def get_current_weekend_schedule():
 
 def get_weekend_feed(race_id):
     # Get the weekend feed for the specified race
-    weekend_feed_url = f"https://cf.nascar.com/cacher/2023/1/{race_id}/weekend-feed.json"
-    weekend_feed_response = requests.get(weekend_feed_url)
-    weekend_feed_data = weekend_feed_response.json()
-    return weekend_feed_data
+    weekend_feed_response = load_json(f"https://cf.nascar.com/cacher/2024/1/{race_id}/weekend-feed.json")
+    weekend_feed_model = WeekendFeed(**weekend_feed_response)
+    adding_position = []
+    position = 1
+    for result in weekend_feed_model.weekend_race[0].results:
+        result.position = position
+        adding_position.append(result)
+        position += 1
+    weekend_feed_model.weekend_race[0].results = adding_position
+    return weekend_feed_model
 
-def get_race_drivers(race_id):
+def get_qualified_drivers(race_id):
     weekend_feed = get_weekend_feed(race_id)
-    drivers_models = []
-    for run in weekend_feed['weekend_runs']:
+    for run in weekend_feed.weekend_runs:
+        if run.run_type == 2:
+            return run.results
+
+def get_results(race_id):
+    weekend_feed = get_weekend_feed(race_id)
+    return weekend_feed.weekend_race[0].results
+    for result in weekend_feed.weekend_race.results:
         if run['run_type'] == 2:
-            drivers_models = [RaceDriver(**item) for item in run['results']]
+            drivers_models = [Driver(**item) for item in run['results']]
     return drivers_models
+
+def get_race_drivers_search_model(race_id):
+    drivers = get_qualified_drivers(race_id)
+    all_drivers = [{'label': driver.driver_name, 'value': str(driver.driver_id)} for driver in drivers]
+    all_drivers_options = [
+        {
+            'label': 'Drivers',
+            'options': all_drivers
+        }
+    ]
+    return SelectSearchResponse(options=all_drivers_options)
 
 def get_drivers(series=None, id=None):
     drivers = load_json("https://cf.nascar.com/cacher/drivers.json")
-    drivers_models = [Driver(**item) for item in drivers['response'] if (series==None or item['Driver_Series'] == series) and (id==None or item['Driver_ID'] == id)]
+    drivers_models = [Driver(**item) for item in drivers['response'] if (series==None or item['Driver_Series'] == series) and (id==None or item['Nascar_Driver_ID'] == int(id)) and item['Crew_Chief']]
     return drivers_models
+
+def get_all_cup_drivers_pick_options():
+    drivers = get_drivers(series='nascar-cup-series')
+    all_drivers = [{'label': driver.Full_Name, 'value': str(driver.Nascar_Driver_ID)} for driver in drivers]
+    all_drivers_options = [
+        {
+            'label': 'Drivers',
+            'options': all_drivers
+        }
+    ]
+    return SelectSearchResponse(options=all_drivers_options)
 
 def get_drivers_list(race_weekend_feed):
     # Create a list of drivers with their car number and image URL
@@ -104,7 +152,135 @@ def get_drivers_list(race_weekend_feed):
 
     return drivers_list
 
+
+def publish_driver_picks(player_id, race_id, picks):
+    key = f'picks-{player_id}-{race_id}'
+    payload = {
+        'player': player_id,
+        'race': race_id,
+        'picks': picks,
+        'type': 'picks'
+    }
+    dapr_client.save_state(STATE_STORE, key, value=json.dumps(payload), state_metadata={
+            'contentType': 'application/json'
+        })
+    return
+
+
+def get_driver_picks(player_id, race_id):
+    key = f'picks-{player_id}-{race_id}'
+    picks_payload = dapr_client.get_state(STATE_STORE, key) #.json()
+    drivers_list = []
+    if picks_payload.data:
+        print (picks_payload.json())
+        for pick in picks_payload.json()['picks']:
+            #print (pick)
+            driver = get_drivers(id=pick)
+            #print (driver)
+            drivers_list += driver
+            #print (drivers_list)
+    return drivers_list
+
+def get_driver_points(race_id):
+    query = {
+        "filter": {
+            "EQ": { "race": str(race_id) }
+        }
+    }
+    race_picks = dapr_client.query_state(store_name=STATE_STORE, query=json.dumps(query))
+    player_query = {
+        "filter": {
+            "EQ": { "type": "player" }
+        }
+    }
+    players = dapr_client.query_state(store_name=STATE_STORE, query=json.dumps(player_query))
+    players_model = [Player(**item.json()) for item in players.results]
+    results = get_results(race_id)
+    player_points = []
+    for player_picks in race_picks.results:
+        points = 0
+        player_picks_dict = player_picks.json()
+        for pick in player_picks_dict['picks']:
+            position_points = 40
+            reduction = 5
+            for result in results:
+                if pick == str(result.driver_id):
+                    points += position_points
+                    points += result.points_earned
+                    break
+                position_points -= reduction
+                if position_points < 0:
+                    position_points = 0
+                reduction = 1
+        player_points_dict = {
+            "name": get_player(player_id=player_picks_dict['player']).name,
+            "pick_1": get_drivers(id=player_picks_dict['picks'][0])[0].Full_Name,
+            "pick_2": get_drivers(id=player_picks_dict['picks'][1])[0].Full_Name,
+            "pick_3": get_drivers(id=player_picks_dict['picks'][2])[0].Full_Name,
+            "points": points
+        }
+        player_points.append(DriverPoints(**player_points_dict))
+    sorted_player_points = sorted(player_points, key=lambda x: getattr(x, 'points'), reverse=True)
+    return sorted_player_points
+
+
+def publish_user(form):
+    key = f'player-{form.name.replace(" ", "-").lower()}-{form.phone_number}'
+
+    # Use a secure hash function like SHA-256
+    hash_object = hashlib.sha256(key.encode())
+    # Get the hash value as bytes
+    hash_bytes = hash_object.digest()
+    # Encode the bytes using base64
+    encoded_hash = base64.b64encode(hash_bytes).decode('utf-8').rstrip('=')
+
+    payload = {
+        'id': key,
+        'name': form.name,
+        'phone_number': form.phone_number,
+        'hash': encoded_hash,
+        'type': 'player'
+    }
+    print (payload)
+    dapr_client.save_state(STATE_STORE, key, value=json.dumps(payload), state_metadata={
+            'contentType': 'application/json'
+        })
+    return
+
+
+def get_player_interface(response: Response, player_id: str = None, player_id_cookie = Cookie(None)):
+    if player_id_cookie is None:
+        if player_id:
+            response.set_cookie(key="player_id_cookie", value=player_id, max_age=600, httponly=True)
+            #return response
+        else:
+            raise HTTPException(status_code=401, detail="Cannot identify you.")
+    else:
+        player_id = player_id_cookie
+    return get_player(player_hash=player_id)
+
+
+@cache_with_ttl(ttl_seconds=60)
+def get_player(player_hash=None, player_id=None):
+    if player_hash:
+        player_query = {
+            "filter": {
+                "EQ": { "hash": player_hash }
+            }
+        }
+        player = dapr_client.query_state(store_name=STATE_STORE, query=json.dumps(player_query))
+        player = player.results[0]
+    else:
+        player = dapr_client.get_state(store_name=STATE_STORE, key=player_id)
+        #test=player.json()
+    if hasattr(player, "json"):
+        return Player(**player.json())
+    else:
+        return Player(name='Unknown', phone_number='9999999999', id="1234567890", hash="1234567890", type="player")
+
+
 if __name__ == "__main__":
+
     # Get the current weekend's race
     current_weekend_race = get_current_weekend_schedule()
 

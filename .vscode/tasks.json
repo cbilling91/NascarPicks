@@ -1,0 +1,19 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "daprd-debug-python",
+            "type": "daprd",
+            "appId": "nascarpicks",
+            "appPort": 8000,
+            // "httpPort": 53109,
+            // "grpcPort": 53317,
+            "metricsPort": 9091
+        },
+        {
+            "label": "daprd-down-python",
+            "type": "daprd-down",
+            "appId": "nascarpicks"
+        }
+   ]
+}
