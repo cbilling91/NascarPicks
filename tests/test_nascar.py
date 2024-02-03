@@ -74,7 +74,7 @@ def test_get_drivers_with_id(mock_load_json):
     result = get_drivers(id=2)
 
     # Assert that the function returns the expected list of Driver objects
-    assert result == [Driver(**fixtures.drivers['response'][1])]
+    assert result == [Driver(**fixtures.drivers['response'][2])]
 
 @patch(test_file+".load_json")
 def test_get_drivers_without_filters(mock_load_json):
