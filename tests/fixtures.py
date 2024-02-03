@@ -1,3 +1,7 @@
+import json
+
+from app.models.nascar import WeekendFeed
+
 drivers = {
     "response": [
         {
@@ -13,7 +17,7 @@ drivers = {
             "DOB": "",
             "DOD": "0001-01-01T00:00:00",
             "Hometown_City": "",
-            "Crew_Chief": "",
+            "Crew_Chief": "Guy",
             "Hometown_State": "",
             "Hometown_Country": "",
             "Rookie_Year_Series_1": 0,
@@ -69,7 +73,7 @@ drivers = {
             "DOB": "",
             "DOD": "0001-01-01T00:00:00",
             "Hometown_City": "",
-            "Crew_Chief": "",
+            "Crew_Chief": "Guy 2",
             "Hometown_State": "",
             "Hometown_Country": "",
             "Rookie_Year_Series_1": 0,
@@ -125,7 +129,7 @@ drivers = {
             "DOB": "",
             "DOD": "0001-01-01T00:00:00",
             "Hometown_City": "",
-            "Crew_Chief": "",
+            "Crew_Chief": "Guy 3",
             "Hometown_State": "",
             "Hometown_Country": "",
             "Rookie_Year_Series_1": 0,
@@ -170,3 +174,8 @@ drivers = {
         },
     ]
 }
+
+with open('examples/results.json', 'r') as file:
+    results = json.load(file)
+
+results_model = WeekendFeed(**results)

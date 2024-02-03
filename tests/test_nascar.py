@@ -30,13 +30,11 @@ def test_get_current_weekend_schedule(mock_requests_get):
 
     assert current_weekend_race == {"start_time": "2023-11-15T12:00:00", "event_name": "Race", "race_id": "race3"}
 
-def test_get_weekend_feed(mock_requests_get):
-    mock_response = mock_requests_get.return_value
-    mock_response.json.return_value = {"entries": [{"car_number": 1, "driver": {"full_name": "Driver 1"}}]}
-    
+@patch(test_file+".load_json")
+def test_get_weekend_feed(mock_load_json):
+    mock_load_json.return_value = fixtures.results
     race_weekend_feed = get_weekend_feed("race1")
-
-    assert race_weekend_feed == {"entries": [{"car_number": 1, "driver": {"full_name": "Driver 1"}}]}
+    assert race_weekend_feed == fixtures.results_model
 
 def test_get_drivers_list():
     race_weekend_feed = {
