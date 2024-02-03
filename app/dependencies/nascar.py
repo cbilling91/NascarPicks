@@ -128,6 +128,7 @@ def get_race_drivers_search_model(race_id):
 def get_drivers(series=None, id=None):
     drivers = load_json("https://cf.nascar.com/cacher/drivers.json")
     drivers_models = [Driver(**item) for item in drivers['response'] if (series==None or item['Driver_Series'] == series) and (id==None or item['Nascar_Driver_ID'] == int(id)) and item['Crew_Chief']]
+    drivers_models = sorted(drivers_models, key=lambda x: x.Full_Name)
     return drivers_models
 
 def get_all_cup_drivers_pick_options():
