@@ -331,3 +331,28 @@ class DriverPoints(BaseModel):
     pick_3: str
     points: int
 
+
+class Lap(BaseModel):
+    Lap: int
+    LapTime: Optional[float]
+    LapSpeed: Optional[str]
+    RunningPos: int
+
+
+class Position(BaseModel):
+    Number: str
+    FullName: str
+    Manufacturer: str
+    RunningPos: int
+    NASCARDriverID: int
+    Laps: List[Lap]
+
+
+class Flag(BaseModel):
+    LapsCompleted: int
+    FlagState: int
+
+
+class LapTimes(BaseModel):
+    laps: List[Position]
+    flags: List[Flag]

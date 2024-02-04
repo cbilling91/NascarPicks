@@ -13,7 +13,7 @@ from fastui.forms import SelectSearchResponse
 from cachetools import TTLCache
 from uuid import uuid4
 
-from app.models.nascar import ScheduleItem, Driver, RaceDriver, DriverResult, DriverPoints, WeekendFeed, PlayerList, Player
+from app.models.nascar import ScheduleItem, Driver, RaceDriver, DriverResult, DriverPoints, WeekendFeed, PlayerList, Player, LapTimes
  
 dapr_client = DaprClient()
 STATE_STORE = 'nascar-db'
@@ -114,6 +114,12 @@ def get_results(race_id):
             drivers_models = [Driver(**item) for item in run['results']]
     return drivers_models
 
+
+def get_driver_position(race_id):
+    positions = load_json(f"https://cf.nascar.com/cacher/2024/1/{race_id}/lap-times.json")
+    positions_model = LapTimes(**positions)
+    return positions_model.laps
+
 def get_race_drivers_search_model(race_id):
     drivers = get_qualified_drivers(race_id)
     all_drivers = [{'label': driver.driver_name, 'value': str(driver.driver_id)} for driver in drivers]
@@ -195,8 +201,9 @@ def get_driver_points(race_id):
         }
     }
     players = dapr_client.query_state(store_name=STATE_STORE, query=json.dumps(player_query))
-    players_model = [Player(**item.json()) for item in players.results]
-    results = get_results(race_id)
+    #players_model = [Player(**item.json()) for item in players.results]
+    #results = get_results(race_id)
+    results = get_driver_position(race_id)
     player_points = []
     for player_picks in race_picks.results:
         points = 0
@@ -205,9 +212,9 @@ def get_driver_points(race_id):
             position_points = 40
             reduction = 5
             for result in results:
-                if pick == str(result.driver_id):
+                if pick == str(result.NASCARDriverID):
                     points += position_points
-                    points += result.points_earned
+                    #points += result.points_earned
                     break
                 position_points -= reduction
                 if position_points < 0:

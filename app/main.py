@@ -106,7 +106,8 @@ def user_profile(race_id: int):
     """
     User profile page, the frontend will fetch this when the user visits `/user/{id}/`.
     """
-    results = get_results(race_id)
+    #results = get_results(race_id)
+    results = get_driver_position(race_id)
     driver_points = get_driver_points(race_id)
 
     components = []
@@ -134,14 +135,17 @@ def user_profile(race_id: int):
             c.Table(
                 data=results,
                 columns=[
-                    DisplayLookup(field='position'),
-                    DisplayLookup(field='driver_fullname'),
-                    DisplayLookup(field='points_earned'),
-                    DisplayLookup(field='qualifying_position'),
-                    DisplayLookup(field='team_name')
+                    DisplayLookup(field='RunningPos'),
+                    DisplayLookup(field='FullName')
                 ],
             )
         ]
+
+    # DisplayLookup(field='position'),
+    # DisplayLookup(field='driver_fullname'),
+    # DisplayLookup(field='points_earned'),
+    # DisplayLookup(field='qualifying_position'),
+    # DisplayLookup(field='team_name')
 
     return [
         c.Page(
