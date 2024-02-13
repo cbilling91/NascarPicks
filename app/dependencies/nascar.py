@@ -54,6 +54,11 @@ def load_json(url):
     json_response = requests.get(url)
     return json_response.json()
 
+@cache_with_ttl(ttl_seconds=10)
+def load_json_10sec(url):
+    json_response = requests.get(url)
+    return json_response.json()
+
 def get_full_schedule():
     # Get the NASCAR schedule feed
     schedule_url = "https://cf.nascar.com/cacher/2024/1/schedule-feed.json"
@@ -116,7 +121,7 @@ def get_results(race_id):
 
 
 def get_driver_position(race_id):
-    positions = load_json(f"https://cf.nascar.com/cacher/2024/1/{race_id}/lap-times.json")
+    positions = load_json_10sec(f"https://cf.nascar.com/cacher/2024/1/{race_id}/lap-times.json")
     positions_model = LapTimes(**positions)
     return positions_model.laps
 
