@@ -10,13 +10,13 @@ from fastui.events import GoToEvent, BackEvent
 from pydantic import BaseModel, Field
 
 from app.dependencies.nascar import *
-from app.models.nascar import DriverSelectForm, UserForm
+from app.models.nascar import DriverSelectForm, UserForm, Player
 
 app = FastAPI()
 
 
 @app.get("/api/", response_model=FastUI, response_model_exclude_none=True)
-async def get_schedule() -> list[AnyComponent]:
+async def get_schedule(player: Player = Depends(get_player_interface)) -> list[AnyComponent]:
     """Get NASCAR Schedule"""
     schedule = get_full_race_schedule_model()
     return [
@@ -35,6 +35,7 @@ async def get_schedule() -> list[AnyComponent]:
                     data=schedule,
                     columns=[
                         DisplayLookup(field='track_name'),
+                        DisplayLookup(field='race_name'),
                         # the second is the date of birth, rendered as a date
                         DisplayLookup(field='start_time_utc',
                                       mode=DisplayMode.date),
@@ -50,10 +51,11 @@ async def get_schedule() -> list[AnyComponent]:
 
 
 @app.get("/api/picks/{race_id}/", response_model=FastUI, response_model_exclude_none=True)
-def form_content(race_id: str, player: str = Depends(get_player_interface)):
+def form_content(race_id: str, player: Player = Depends(get_player_interface)):
     if type(player) == Response:
         return player
     current_picks = get_driver_picks(player.id, race_id)
+    current_race = get_full_race_schedule_model(race_id)
     print(current_picks)
 
     class CurrentRaceDrivers(BaseModel):
@@ -62,12 +64,14 @@ def form_content(race_id: str, player: str = Depends(get_player_interface)):
     components = [
         c.Link(
             components=[c.Text(text='Back to Schedule')],
+            
             on_click=GoToEvent(url='/'),
-        )
+        ),
+        c.Heading(text=f"Hello {player.name.split()[0]}", level=1),
+        c.Heading(text=f"{current_race.track_name} - {current_race.race_name}", level=3),
     ]
     if current_picks:
         components += [
-            c.Heading(text='Current Picks', level=2),
             c.Table(
                 data=current_picks,
                 columns=[
@@ -79,10 +83,10 @@ def form_content(race_id: str, player: str = Depends(get_player_interface)):
         ]
     else:
         components += [
-            c.Heading(text='Make Your Picks', level=2)
+            c.Heading(text='Make Your Picks', level=3)
         ]
     components += [c.ModelForm(model=CurrentRaceDrivers,
-                               submit_url=f'/api/picks/{race_id}/?player_id={player.id}')]
+                               submit_url=f'/api/picks/{race_id}/')]
     return [
         c.Page(
             components=components
@@ -91,18 +95,18 @@ def form_content(race_id: str, player: str = Depends(get_player_interface)):
 
 
 @app.post('/api/picks/{race_id}/', response_model=FastUI, response_model_exclude_none=True)
-async def select_form_post(race_id: str, player_id: str, form: Annotated[DriverSelectForm, fastui_form(DriverSelectForm)]):
-    publish_driver_picks(player_id, race_id, form.search_select_multiple)
+async def select_form_post(race_id: str, form: Annotated[DriverSelectForm, fastui_form(DriverSelectForm)], player: Player = Depends(get_player_interface)):
+    publish_driver_picks(player.id, race_id, form.search_select_multiple)
     return [c.FireEvent(event=GoToEvent(url=f'/thanks/{race_id}/'), message="Thank you for your picks!!")]
 
 
 @app.get("/api/thanks/{race_id}/", response_model=FastUI, response_model_exclude_none=True)
-def thanks(race_id: str):
+def thanks(race_id: str, player: Player = Depends(get_player_interface)):
     return [c.FireEvent(event=GoToEvent(url=f'/picks/{race_id}/', message="Thank you for your picks!!"))]
 
 
 @app.get("/api/races/{race_id}/", response_model=FastUI, response_model_exclude_none=True)
-def user_profile(race_id: int):
+def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
     """
     User profile page, the frontend will fetch this when the user visits `/user/{id}/`.
     """
@@ -117,6 +121,9 @@ def user_profile(race_id: int):
                     on_click=GoToEvent(url='/'),
                 ),
                 c.Heading(text='Picks', level=2),
+            ]
+    if driver_points:
+        components += [
                 c.Table(
                     data=driver_points,
                     columns=[
@@ -125,13 +132,19 @@ def user_profile(race_id: int):
                         DisplayLookup(field='pick_2'),
                         DisplayLookup(field='pick_3'),
                         DisplayLookup(field='points')
-                    ],
+                    ]
                 )
             ]
+    else:
+        components += [
+            c.Text(text="No picks made yet.")
+        ]
+
+    components += [ c.Heading(text='Race', level=2) ]
     
     if results:
         components += [
-            c.Heading(text='Race', level=2),
+            
             c.Table(
                 data=results,
                 columns=[
@@ -139,6 +152,10 @@ def user_profile(race_id: int):
                     DisplayLookup(field='FullName')
                 ],
             )
+        ]
+    else:
+        components += [
+            c.Text(text="Race has not started.")
         ]
 
     # DisplayLookup(field='position'),
@@ -155,7 +172,7 @@ def user_profile(race_id: int):
 
 
 @app.get("/api/races/{race_id}/drivers/", response_model=SelectSearchResponse)
-def user_profile(race_id: int) -> SelectSearchResponse:
+def user_profile(race_id: int, player: Player = Depends(get_player_interface)) -> SelectSearchResponse:
     """
     User profile page, the frontend will fetch this when the user visits `/user/{id}/`.
     """
@@ -163,7 +180,7 @@ def user_profile(race_id: int) -> SelectSearchResponse:
 
 
 @app.get("/api/users/", response_model=FastUI, response_model_exclude_none=True)
-def user_form():
+def user_form(player: str = Depends(check_admin_user)):
     return [
         c.Page(
             components=[
@@ -180,12 +197,12 @@ def user_form():
 
 
 @app.post("/api/users/create/", response_model=FastUI, response_model_exclude_none=True)
-def manage_users(form: Annotated[UserForm, fastui_form(UserForm)]):
+def manage_users(form: Annotated[UserForm, fastui_form(UserForm)], player: Player = Depends(get_player_interface)):
     publish_user(form)
     return [c.FireEvent(event=GoToEvent(url='/'))]
 
 
 @app.get('/{path:path}')
-async def html_landing() -> HTMLResponse:
+async def html_landing(player: Player = Depends(get_player_interface)) -> HTMLResponse:
     """Simple HTML page which serves the React app, comes last as it matches all paths."""
     return HTMLResponse(prebuilt_html(title='FastUI Demo'))

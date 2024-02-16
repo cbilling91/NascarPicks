@@ -24,6 +24,7 @@ class UserForm(BaseModel):
     # hash: str
     name: str
     phone_number: str
+    admin: bool = Field(default=False)
 
     @field_validator("phone_number")
     def validate_value(cls, phone_number):
@@ -39,6 +40,7 @@ class Player(BaseModel):
     name: str
     phone_number: str
     type: str
+    admin: bool
 
 
 class PlayerList(RootModel):

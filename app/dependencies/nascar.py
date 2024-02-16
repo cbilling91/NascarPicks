@@ -7,7 +7,7 @@ import hashlib
 import base64
 
 from pydantic import BaseModel, Field
-from fastapi import Cookie, Response, HTTPException
+from fastapi import Cookie, Response, HTTPException, Depends
 from dapr.clients import DaprClient
 from fastui.forms import SelectSearchResponse
 from cachetools import TTLCache
@@ -69,7 +69,8 @@ def get_full_schedule():
 def get_full_race_schedule_model(id=None):
     full_schedule = get_full_schedule()
     full_schedule_sorted = sorted(full_schedule, key=lambda x: x['start_time_utc'])
-    filtered_schedule = [ScheduleItem(**item) for item in full_schedule_sorted if (item['event_name'] == 'Race' and (id==None or item['race_id'] == id ))]
+    filtered_schedule = {item['race_id']: ScheduleItem(**item) for item in full_schedule_sorted if ('Race' in item['event_name'] and (id==None or str(item['race_id']) == id ))}
+    filtered_schedule = list(filtered_schedule.values())
     if id:
         return filtered_schedule[0]
     return filtered_schedule
@@ -121,9 +122,12 @@ def get_results(race_id):
 
 
 def get_driver_position(race_id):
-    positions = load_json_10sec(f"https://cf.nascar.com/cacher/2024/1/{race_id}/lap-times.json")
-    positions_model = LapTimes(**positions)
-    return positions_model.laps
+    try:
+        positions = load_json_10sec(f"https://cf.nascar.com/cacher/2024/1/{race_id}/lap-times.json")
+        positions_model = LapTimes(**positions)
+        return positions_model.laps
+    except:
+        return False
 
 def get_race_drivers_search_model(race_id):
     drivers = get_qualified_drivers(race_id)
@@ -213,18 +217,19 @@ def get_driver_points(race_id):
     for player_picks in race_picks.results:
         points = 0
         player_picks_dict = player_picks.json()
-        for pick in player_picks_dict['picks']:
-            position_points = 40
-            reduction = 5
-            for result in results:
-                if pick == str(result.NASCARDriverID):
-                    points += position_points
-                    #points += result.points_earned
-                    break
-                position_points -= reduction
-                if position_points < 0:
-                    position_points = 0
-                reduction = 1
+        if results:
+            for pick in player_picks_dict['picks']:
+                position_points = 40
+                reduction = 5
+                for result in results:
+                    if pick == str(result.NASCARDriverID):
+                        points += position_points
+                        #points += result.points_earned
+                        break
+                    position_points -= reduction
+                    if position_points < 0:
+                        position_points = 0
+                    reduction = 1
         player_points_dict = {
             "name": get_player(player_id=player_picks_dict['player']).name,
             "pick_1": get_drivers(id=player_picks_dict['picks'][0])[0].Full_Name,
@@ -271,6 +276,12 @@ def get_player_interface(response: Response, player_id: str = None, player_id_co
     else:
         player_id = player_id_cookie
     return get_player(player_hash=player_id)
+
+def check_admin_user(admin: Player = Depends(get_player_interface)):
+    if admin.admin:
+        return admin
+    else:
+        raise HTTPException(status_code=401, detail="Only admins can do this.")
 
 
 @cache_with_ttl(ttl_seconds=60)
