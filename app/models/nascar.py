@@ -331,7 +331,8 @@ class DriverPoints(BaseModel):
     pick_1: str
     pick_2: str
     pick_3: str
-    points: int
+    stage_points: int = 0
+    total_points: int = 0
 
 
 class Lap(BaseModel):
@@ -358,3 +359,28 @@ class Flag(BaseModel):
 class LapTimes(BaseModel):
     laps: List[Position]
     flags: List[Flag]
+
+
+class Result(BaseModel):
+    position: int
+    vehicle_number: str
+    driver_id: int
+    full_name: str
+    stage_points: int
+
+
+class StagePointsItem(BaseModel):
+    race_id: int
+    run_id: int
+    stage_number: int
+    results: List[Result]
+
+
+class StagePoints(RootModel):
+    root: List[StagePointsItem]
+
+    def __iter__(self):
+        return iter(self.root)
+
+    def __getitem__(self, item):
+        return self.root[item]

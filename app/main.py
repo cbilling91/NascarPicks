@@ -131,7 +131,8 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
                         DisplayLookup(field='pick_1'),
                         DisplayLookup(field='pick_2'),
                         DisplayLookup(field='pick_3'),
-                        DisplayLookup(field='points')
+                        DisplayLookup(field='stage_points'),
+                        DisplayLookup(field='total_points')
                     ]
                 )
             ]
@@ -172,11 +173,11 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
 
 
 @app.get("/api/races/{race_id}/drivers/", response_model=SelectSearchResponse)
-def user_profile(race_id: int, player: Player = Depends(get_player_interface)) -> SelectSearchResponse:
+def user_profile(q: str, race_id: int, player: Player = Depends(get_player_interface)) -> SelectSearchResponse:
     """
     User profile page, the frontend will fetch this when the user visits `/user/{id}/`.
     """
-    return get_all_cup_drivers_pick_options()
+    return get_all_cup_drivers_pick_options(q)
 
 
 @app.get("/api/users/", response_model=FastUI, response_model_exclude_none=True)
