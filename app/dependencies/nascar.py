@@ -13,7 +13,7 @@ from fastui.forms import SelectSearchResponse
 from cachetools import TTLCache
 from uuid import uuid4
 
-from app.models.nascar import ScheduleItem, Driver, RaceDriver, DriverResult, DriverPoints, WeekendFeed, PlayerList, Player, LapTimes, StagePoints
+from app.models.nascar import ScheduleItem, Driver, RaceDriver, DriverResult, DriverPoints, WeekendFeed, PlayerList, Player, Players, LapTimes, StagePoints
 
 dapr_client = DaprClient()
 STATE_STORE = 'nascar-db'
@@ -240,14 +240,6 @@ def get_driver_points(race_id):
     }
     race_picks = dapr_client.query_state(
         store_name=STATE_STORE, query=json.dumps(query))
-    # player_query = {
-    #     "filter": {
-    #         "EQ": { "type": "player" }
-    #     }
-    # }
-    # players = dapr_client.query_state(store_name=STATE_STORE, query=json.dumps(player_query))
-    # players_model = [Player(**item.json()) for item in players.results]
-    # results = get_results(race_id)
     results = get_driver_position(race_id)
     all_driver_stage_points = get_driver_stage_points(race_id)
     player_points = []
@@ -255,7 +247,7 @@ def get_driver_points(race_id):
         points = 0
         stage_points = 0
         player_picks_dict = player_picks.json()
-        if results and all_driver_stage_points:
+        if results:
             for pick in player_picks_dict['picks']:
                 position_points = 40
                 reduction = 5
@@ -268,12 +260,13 @@ def get_driver_points(race_id):
                     if position_points < 0:
                         position_points = 0
                     reduction = 1
-                for stage in all_driver_stage_points:
-                    for driver_position in stage.results:
-                        if pick == str(driver_position.driver_id):
-                            points += driver_position.stage_points
-                            stage_points += driver_position.stage_points
-                            break
+                if all_driver_stage_points:
+                    for stage in all_driver_stage_points:
+                        for driver_position in stage.results:
+                            if pick == str(driver_position.driver_id):
+                                points += driver_position.stage_points
+                                stage_points += driver_position.stage_points
+                                break
         player_points_dict = {
             "name": get_player(player_id=player_picks_dict['player']).name,
             "pick_1": get_drivers(id=player_picks_dict['picks'][0])[0].Full_Name,
@@ -352,6 +345,19 @@ def get_player(player_hash=None, player_id=None):
         return Player(**player.json())
     else:
         return Player(name='Unknown', phone_number='9999999999', id="1234567890", hash="1234567890", type="player")
+
+
+@cache_with_ttl(ttl_seconds=60)
+def get_players():
+    player_query = {
+        "filter": {
+            "EQ": {"type": "player"}
+        }
+    }
+    players = dapr_client.query_state(
+        store_name=STATE_STORE, query=json.dumps(player_query)
+    )
+    return [Player(**item.json()) for item in players.results]
 
 
 if __name__ == "__main__":

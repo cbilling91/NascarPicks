@@ -30,6 +30,7 @@ async def get_schedule(player: Player = Depends(get_player_interface)) -> list[A
                         )
                     ],
                 ),
+                c.Heading(text=f"Hello, {player.name.split()[0]}", level=1),
                 c.Heading(text='Schedule', level=2),
                 c.Table(
                     data=schedule,
@@ -67,7 +68,7 @@ def form_content(race_id: str, player: Player = Depends(get_player_interface)):
             
             on_click=GoToEvent(url='/'),
         ),
-        c.Heading(text=f"Hello {player.name.split()[0]}", level=1),
+        c.Heading(text=f"Hello, {player.name.split()[0]}", level=1),
         c.Heading(text=f"{current_race.track_name} - {current_race.race_name}", level=3),
     ]
     if current_picks:
@@ -182,6 +183,7 @@ def user_profile(q: str, race_id: int, player: Player = Depends(get_player_inter
 
 @app.get("/api/users/", response_model=FastUI, response_model_exclude_none=True)
 def user_form(player: str = Depends(check_admin_user)):
+    players = get_players()
     return [
         c.Page(
             components=[
@@ -189,8 +191,16 @@ def user_form(player: str = Depends(check_admin_user)):
                     components=[c.Text(text='Back to Schedule')],
                     on_click=GoToEvent(url='/'),
                 ),
+                c.Heading(text='Users', level=1),
+                c.Table(
+                    data=players,
+                    columns=[
+                        DisplayLookup(field='name'),
+                        DisplayLookup(field='phone_number'),
+                        DisplayLookup(field='admin')
+                    ]
+                ),
                 c.Heading(text='User Form', level=2),
-                c.Paragraph(text='Simple login form with email and password.'),
                 c.ModelForm(model=UserForm, submit_url='/api/users/create/'),
             ]
         )

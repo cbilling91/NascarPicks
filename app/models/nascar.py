@@ -43,6 +43,16 @@ class Player(BaseModel):
     admin: bool
 
 
+class Players(RootModel):
+    root: List[Player]
+
+    def __iter__(self):
+        return iter(self.root)
+
+    def __getitem__(self, item):
+        return self.root[item]
+
+
 class PlayerList(RootModel):
     root: List[Player]
 
