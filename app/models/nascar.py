@@ -8,6 +8,7 @@ from pydantic_core import PydanticCustomError
 
 
 class DriverSelectForm(BaseModel):
+    player_select: str = None
     search_select_multiple: list[str] = Field(title="Select 3 Drivers", description="drivers desc", json_schema_extra={'search_url': '/api/drivers/1'})
     #thing: str = Field(title="drivers", description="drivers desc", json_schema_extra={'search_url': '/api/drivers/1'})
 

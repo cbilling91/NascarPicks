@@ -59,9 +59,24 @@ def form_content(race_id: str, player: Player = Depends(get_player_interface)):
     current_race = get_full_race_schedule_model(race_id)
     print(current_picks)
 
-    class CurrentRaceDrivers(BaseModel):
-        search_select_multiple: list[str] = Field(title="Select 3 Drivers", description="drivers desc", json_schema_extra={
-                                                  'search_url': f'/api/races/{race_id}/drivers/'})
+    if player.admin:
+
+        class CurrentRaceDrivers(BaseModel):
+            player_select: str = Field(title="Player", default=player.id, description="Leave blank to pick as you", json_schema_extra={
+                    'search_url': f'/api/users/json'
+                }
+            )                        
+            search_select_multiple: list[str] = Field(title="Select 3 Drivers", description="drivers desc", json_schema_extra={
+                    'search_url': f'/api/races/{race_id}/drivers/'
+                }
+            )
+
+    else:
+
+        class CurrentRaceDrivers(BaseModel):
+            search_select_multiple: list[str] = Field(title="Select 3 Drivers", description="drivers desc", json_schema_extra={
+                                                    'search_url': f'/api/races/{race_id}/drivers/'})
+
     components = [
         c.Link(
             components=[c.Text(text='Back to Schedule')],
@@ -97,7 +112,7 @@ def form_content(race_id: str, player: Player = Depends(get_player_interface)):
 
 @app.post('/api/picks/{race_id}/', response_model=FastUI, response_model_exclude_none=True)
 async def select_form_post(race_id: str, form: Annotated[DriverSelectForm, fastui_form(DriverSelectForm)], player: Player = Depends(get_player_interface)):
-    publish_driver_picks(player.id, race_id, form.search_select_multiple)
+    publish_driver_picks(player.id, race_id, form)
     return [c.FireEvent(event=GoToEvent(url=f'/thanks/{race_id}/'), message="Thank you for your picks!!")]
 
 
@@ -195,7 +210,7 @@ def user_form(player: str = Depends(check_admin_user)):
                 c.Table(
                     data=players,
                     columns=[
-                        DisplayLookup(field='name'),
+                        DisplayLookup(field='name', on_click=GoToEvent(url='/?player_id={hash}')),
                         DisplayLookup(field='phone_number'),
                         DisplayLookup(field='admin')
                     ]
@@ -207,10 +222,28 @@ def user_form(player: str = Depends(check_admin_user)):
     ]
 
 
+@app.get("/api/users/json", response_model=SelectSearchResponse)
+def user_form(player: str = Depends(check_admin_user), format: str = None):
+    players = get_players()
+    player_json = [{'value': player.id, 'label': player.name} for player in players]
+    all_player_options = [
+        {
+            'label': 'Players',
+            'options': player_json
+        }
+    ]
+    return SelectSearchResponse(options=all_player_options)
+
+
 @app.post("/api/users/create/", response_model=FastUI, response_model_exclude_none=True)
 def manage_users(form: Annotated[UserForm, fastui_form(UserForm)], player: Player = Depends(get_player_interface)):
     publish_user(form)
-    return [c.FireEvent(event=GoToEvent(url='/'))]
+    return [c.FireEvent(event=GoToEvent(url='/user_created/'))]
+
+
+@app.get("/api/user_created/", response_model=FastUI, response_model_exclude_none=True)
+def user_created(player: Player = Depends(get_player_interface)):
+    return [c.FireEvent(event=GoToEvent(url=f'/users/'))]
 
 
 @app.get('/{path:path}')

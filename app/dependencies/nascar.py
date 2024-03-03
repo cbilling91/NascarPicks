@@ -204,11 +204,17 @@ def get_drivers_list(race_weekend_feed):
 
 
 def publish_driver_picks(player_id, race_id, picks):
-    key = f'picks-{player_id}-{race_id}'
+
+    if picks.player_select:
+        key = f'picks-{picks.player_select}-{race_id}'
+        picking_player = picks.player_select
+    else:
+        key = f'picks-{player_id}-{race_id}'
+        picking_player = player_id
     payload = {
-        'player': player_id,
+        'player': picking_player,
         'race': race_id,
-        'picks': picks,
+        'picks': picks.search_select_multiple,
         'type': 'picks'
     }
     dapr_client.save_state(STATE_STORE, key, value=json.dumps(payload), state_metadata={
@@ -347,7 +353,7 @@ def get_player(player_hash=None, player_id=None):
         return Player(name='Unknown', phone_number='9999999999', id="1234567890", hash="1234567890", type="player")
 
 
-@cache_with_ttl(ttl_seconds=60)
+#@cache_with_ttl(ttl_seconds=60)
 def get_players():
     player_query = {
         "filter": {
