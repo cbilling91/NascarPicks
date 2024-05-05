@@ -1,5 +1,5 @@
 from typing import Annotated
-import time
+from datetime import datetime
 
 from fastapi import FastAPI, Depends, Response
 from fastapi.responses import HTMLResponse
@@ -9,11 +9,21 @@ from fastui.components.display import DisplayMode, DisplayLookup
 from fastui.events import GoToEvent, BackEvent
 from pydantic import BaseModel, Field
 
-from app.dependencies.nascar import *
+from app.dependencies.nascar import (
+    check_admin_user, 
+    get_player_interface, 
+    get_driver_picks, 
+    get_full_race_schedule_model, 
+    get_driver_position,
+    get_driver_points, 
+    get_players, 
+    get_all_cup_drivers_pick_options, 
+    publish_driver_picks, 
+    publish_user
+)
 from app.models.nascar import DriverSelectForm, UserForm, Player
 
 app = FastAPI()
-
 
 @app.get("/api/", response_model=FastUI, response_model_exclude_none=True)
 async def get_schedule(player: Player = Depends(get_player_interface)) -> list[AnyComponent]:
@@ -59,50 +69,57 @@ def form_content(race_id: str, player: Player = Depends(get_player_interface)):
     current_race = get_full_race_schedule_model(race_id)
     print(current_picks)
 
-    if player.admin:
-
-        class CurrentRaceDrivers(BaseModel):
-            player_select: str = Field(title="Player", default=player.id, description="Leave blank to pick as you", json_schema_extra={
-                    'search_url': f'/api/users/json'
-                }
-            )                        
-            search_select_multiple: list[str] = Field(title="Select 3 Drivers", description="drivers desc", json_schema_extra={
-                    'search_url': f'/api/races/{race_id}/drivers/'
-                }
-            )
-
-    else:
-
-        class CurrentRaceDrivers(BaseModel):
-            search_select_multiple: list[str] = Field(title="Select 3 Drivers", description="drivers desc", json_schema_extra={
-                                                    'search_url': f'/api/races/{race_id}/drivers/'})
+    utc_racetime = datetime.fromisoformat(current_race.start_time_utc)
+    # Get the current UTC time
+    current_utc_time = datetime.utcnow()
 
     components = [
         c.Link(
             components=[c.Text(text='Back to Schedule')],
-            
+
             on_click=GoToEvent(url='/'),
         ),
         c.Heading(text=f"Hello, {player.name.split()[0]}", level=1),
-        c.Heading(text=f"{current_race.track_name} - {current_race.race_name}", level=3),
+        c.Heading(
+            text=f"{current_race.track_name} - {current_race.race_name}", level=3),
     ]
-    if current_picks:
-        components += [
-            c.Table(
-                data=current_picks,
-                columns=[
-                    DisplayLookup(field='Full_Name'),
-                    DisplayLookup(field='Badge'),
-                    DisplayLookup(field='Team')
-                ],
+
+    if current_utc_time <= utc_racetime or player.admin:
+
+        class CurrentRaceDrivers(BaseModel):
+
+            if player.admin:
+                player_select: str = Field(title="Player", default=player.id, description="Leave blank to pick as you", json_schema_extra={
+                    'search_url': f'/api/users/json'
+                }
+                )
+            search_select_multiple: list[str] = Field(title="Select 3 Drivers", description="drivers desc", json_schema_extra={
+                'search_url': f'/api/races/{race_id}/drivers/'
+            }
             )
-        ]
+        if current_picks:
+            components += [
+                c.Table(
+                    data=current_picks,
+                    columns=[
+                        DisplayLookup(field='Full_Name'),
+                        DisplayLookup(field='Badge'),
+                        DisplayLookup(field='Team')
+                    ],
+                )
+            ]
+        else:
+            components += [
+                c.Heading(text='Make Your Picks', level=3)
+            ]
+        components += [c.ModelForm(model=CurrentRaceDrivers,
+                                   submit_url=f'/api/picks/{race_id}/')]
+
     else:
-        components += [
-            c.Heading(text='Make Your Picks', level=3)
-        ]
-    components += [c.ModelForm(model=CurrentRaceDrivers,
-                               submit_url=f'/api/picks/{race_id}/')]
+
+        components += c.Paragraph(
+            text='Race has already started. No more picks can be made.'),
+
     return [
         c.Page(
             components=components
@@ -126,42 +143,51 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
     """
     User profile page, the frontend will fetch this when the user visits `/user/{id}/`.
     """
-    #results = get_results(race_id)
+    # results = get_results(race_id)
     results = get_driver_position(race_id)
     driver_points = get_driver_points(race_id)
 
+    if not results:
+        hidden_picks = []
+        for driver in driver_points:
+            driver.pick_1 = "Hidden Till Race Start"
+            driver.pick_2 = "Hidden Till Race Start"
+            driver.pick_3 = "Hidden Till Race Start"
+            hidden_picks.append(driver)
+        driver_points = hidden_picks
+
     components = []
     components += [
-                c.Link(
-                    components=[c.Text(text='Back to Schedule')],
-                    on_click=GoToEvent(url='/'),
-                ),
-                c.Heading(text='Picks', level=2),
-            ]
+        c.Link(
+            components=[c.Text(text='Back to Schedule')],
+            on_click=GoToEvent(url='/'),
+        ),
+        c.Heading(text='Picks', level=2),
+    ]
     if driver_points:
         components += [
-                c.Table(
-                    data=driver_points,
-                    columns=[
-                        DisplayLookup(field='name'),
-                        DisplayLookup(field='pick_1'),
-                        DisplayLookup(field='pick_2'),
-                        DisplayLookup(field='pick_3'),
-                        DisplayLookup(field='stage_points'),
-                        DisplayLookup(field='total_points')
-                    ]
-                )
-            ]
+            c.Table(
+                data=driver_points,
+                columns=[
+                    DisplayLookup(field='name'),
+                    DisplayLookup(field='pick_1'),
+                    DisplayLookup(field='pick_2'),
+                    DisplayLookup(field='pick_3'),
+                    DisplayLookup(field='stage_points'),
+                    DisplayLookup(field='total_points')
+                ]
+            )
+        ]
     else:
         components += [
             c.Text(text="No picks made yet.")
         ]
 
-    components += [ c.Heading(text='Race', level=2) ]
-    
+    components += [c.Heading(text='Race', level=2)]
+
     if results:
         components += [
-            
+
             c.Table(
                 data=results,
                 columns=[
@@ -210,7 +236,8 @@ def user_form(player: str = Depends(check_admin_user)):
                 c.Table(
                     data=players,
                     columns=[
-                        DisplayLookup(field='name', on_click=GoToEvent(url='/?player_id={hash}')),
+                        DisplayLookup(field='name', on_click=GoToEvent(
+                            url='/?player_id={hash}')),
                         DisplayLookup(field='phone_number'),
                         DisplayLookup(field='admin')
                     ]
@@ -225,7 +252,8 @@ def user_form(player: str = Depends(check_admin_user)):
 @app.get("/api/users/json", response_model=SelectSearchResponse)
 def user_form(player: str = Depends(check_admin_user), format: str = None):
     players = get_players()
-    player_json = [{'value': player.id, 'label': player.name} for player in players]
+    player_json = [{'value': player.id, 'label': player.name}
+                   for player in players]
     all_player_options = [
         {
             'label': 'Players',

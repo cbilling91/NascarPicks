@@ -238,7 +238,7 @@ def get_driver_picks(player_id, race_id):
     return drivers_list
 
 
-def get_driver_points(race_id):
+def get_driver_points(race_id, hide=False):
     query = {
         "filter": {
             "EQ": {"race": str(race_id)}
@@ -252,32 +252,40 @@ def get_driver_points(race_id):
     for player_picks in race_picks.results:
         points = 0
         stage_points = 0
-        player_picks_dict = player_picks.json()
-        if results:
-            for pick in player_picks_dict['picks']:
-                position_points = 40
-                reduction = 5
-                for result in results:
-                    if pick == str(result.NASCARDriverID):
-                        points += position_points
-                        # points += result.points_earned
-                        break
-                    position_points -= reduction
-                    if position_points < 0:
-                        position_points = 0
-                    reduction = 1
-                if all_driver_stage_points:
-                    for stage in all_driver_stage_points:
-                        for driver_position in stage.results:
-                            if pick == str(driver_position.driver_id):
-                                points += driver_position.stage_points
-                                stage_points += driver_position.stage_points
-                                break
+        if not hide:
+            player_picks_dict = player_picks.json()
+            if results:
+                for pick in player_picks_dict['picks']:
+                    position_points = 40
+                    reduction = 5
+                    for result in results:
+                        if pick == str(result.NASCARDriverID):
+                            points += position_points
+                            # points += result.points_earned
+                            break
+                        position_points -= reduction
+                        if position_points < 0:
+                            position_points = 0
+                        reduction = 1
+                    if all_driver_stage_points:
+                        for stage in all_driver_stage_points:
+                            for driver_position in stage.results:
+                                if pick == str(driver_position.driver_id):
+                                    points += driver_position.stage_points
+                                    stage_points += driver_position.stage_points
+                                    break
+            pick_1 = get_drivers(id=player_picks_dict['picks'][0])[0].Full_Name
+            pick_2 = get_drivers(id=player_picks_dict['picks'][1])[0].Full_Name
+            pick_3 = get_drivers(id=player_picks_dict['picks'][2])[0].Full_Name
+        else:
+            pick_1 = "Hidden Till Race Start"
+            pick_2 = "Hidden Till Race Start"
+            pick_3 = "Hidden Till Race Start"
         player_points_dict = {
             "name": get_player(player_id=player_picks_dict['player']).name,
-            "pick_1": get_drivers(id=player_picks_dict['picks'][0])[0].Full_Name,
-            "pick_2": get_drivers(id=player_picks_dict['picks'][1])[0].Full_Name,
-            "pick_3": get_drivers(id=player_picks_dict['picks'][2])[0].Full_Name,
+            "pick_1": pick_1,
+            "pick_2": pick_2,
+            "pick_3": pick_3,
             "stage_points": stage_points,
             "total_points": points
         }
