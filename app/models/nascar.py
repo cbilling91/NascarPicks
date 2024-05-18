@@ -1,9 +1,10 @@
 from __future__ import annotations
+import pytz
 
 from typing import List, Optional
-from datetime import date
+from datetime import date, datetime
 
-from pydantic import BaseModel, RootModel, EmailStr, Field, field_validator, constr
+from pydantic import BaseModel, RootModel, EmailStr, Field, field_validator, root_validator
 from pydantic_core import PydanticCustomError
 
 
@@ -25,6 +26,7 @@ class UserForm(BaseModel):
     # hash: str
     name: str
     phone_number: str
+    text_notifications: Optional[bool] = False # = Field(default=True)
     admin: bool = Field(default=False)
 
     @field_validator("phone_number")
@@ -37,9 +39,11 @@ class UserForm(BaseModel):
 
 class Player(BaseModel):
     hash: str
+    edit: str = "Edit"
     id: str
     name: str
     phone_number: str
+    text_notifications: Optional[bool] = None
     type: str
     admin: bool
 
@@ -68,10 +72,34 @@ class ScheduleItem(BaseModel):
     race_name: str
     series_id: int
     run_type: int
-    start_time_utc: str
+    start_time_utc: datetime
+    start_time: str
     end_time_utc: date
     picks: str = "Make Picks"
     race: str = "Race"
+
+    @root_validator(pre=True)
+    def convert_to_edt(cls, values):
+        start_time_utc = values.get('start_time_utc')
+        
+        start_time_utc = datetime.strptime(values.get('start_time_utc'), "%Y-%m-%dT%H:%M:%S")
+        
+        # Ensure the timestamp is in UTC
+        if start_time_utc.tzinfo is None:
+            utc_zone = pytz.utc
+            start_time_utc = utc_zone.localize(start_time_utc)
+        else:
+            start_time_utc = start_time_utc.astimezone(pytz.utc)
+        
+        # Convert to Eastern Daylight Time (EDT)
+        edt_zone = pytz.timezone('America/New_York')
+        edt_timestamp = start_time_utc.astimezone(edt_zone)
+        
+        # Set both UTC and EDT timestamps in the values dictionary
+        values['start_time_utc'] = start_time_utc
+        values['start_time'] = edt_timestamp.strftime("%Y-%m-%d %I:%M:00 %p")
+        
+        return values
 
 
 class DriverResult(BaseModel):

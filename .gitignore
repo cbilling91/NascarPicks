@@ -2,3 +2,22 @@
 venv
 .terraform*
 *.tfstate*
+
+# Terraform files
+*.tfstate
+*.tfstate.*
+terraform.tfstate.backup
+*.tfplan
+
+# Exclude the .terraform directory where Terraform keeps its state files
+.terraform/
+
+# Ignore any local override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Ignore CLI configuration files
+.terraformrc
+terraform.rc

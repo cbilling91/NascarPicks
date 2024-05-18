@@ -1,5 +1,5 @@
 from typing import Annotated
-from datetime import datetime
+from datetime import datetime, UTC
 
 from fastapi import FastAPI, Depends, Response
 from fastapi.responses import HTMLResponse
@@ -28,7 +28,7 @@ app = FastAPI()
 @app.get("/api/", response_model=FastUI, response_model_exclude_none=True)
 async def get_schedule(player: Player = Depends(get_player_interface)) -> list[AnyComponent]:
     """Get NASCAR Schedule"""
-    schedule = get_full_race_schedule_model()
+    schedule = get_full_race_schedule_model(one_week_in_future_only=True)
     return [
         c.Page(
             components=[
@@ -48,7 +48,7 @@ async def get_schedule(player: Player = Depends(get_player_interface)) -> list[A
                         DisplayLookup(field='track_name'),
                         DisplayLookup(field='race_name'),
                         # the second is the date of birth, rendered as a date
-                        DisplayLookup(field='start_time_utc',
+                        DisplayLookup(field='start_time',
                                       mode=DisplayMode.date),
                         DisplayLookup(field='picks', on_click=GoToEvent(
                             url='/picks/{race_id}/')),
@@ -69,9 +69,9 @@ def form_content(race_id: str, player: Player = Depends(get_player_interface)):
     current_race = get_full_race_schedule_model(race_id)
     print(current_picks)
 
-    utc_racetime = datetime.fromisoformat(current_race.start_time_utc)
+    #utc_racetime = datetime.fromisoformat(current_race.start_time_utc)
     # Get the current UTC time
-    current_utc_time = datetime.utcnow()
+    current_utc_time = datetime.now(UTC)
 
     components = [
         c.Link(
@@ -81,10 +81,10 @@ def form_content(race_id: str, player: Player = Depends(get_player_interface)):
         ),
         c.Heading(text=f"Hello, {player.name.split()[0]}", level=1),
         c.Heading(
-            text=f"{current_race.track_name} - {current_race.race_name}", level=3),
+            text=f"{current_race.track_name} - {current_race.race_name}", level=3)
     ]
 
-    if current_utc_time <= utc_racetime or player.admin:
+    if current_utc_time <= current_race.start_time_utc or player.admin:
 
         class CurrentRaceDrivers(BaseModel):
 
@@ -201,12 +201,6 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
             c.Text(text="Race has not started.")
         ]
 
-    # DisplayLookup(field='position'),
-    # DisplayLookup(field='driver_fullname'),
-    # DisplayLookup(field='points_earned'),
-    # DisplayLookup(field='qualifying_position'),
-    # DisplayLookup(field='team_name')
-
     return [
         c.Page(
             components=components
@@ -223,8 +217,13 @@ def user_profile(q: str, race_id: int, player: Player = Depends(get_player_inter
 
 
 @app.get("/api/users/", response_model=FastUI, response_model_exclude_none=True)
-def user_form(player: str = Depends(check_admin_user)):
+def user_form(player: str = Depends(check_admin_user), edit_player_id: str = None):
     players = get_players()
+    edit_player = None
+    if edit_player_id:
+        for player in players:
+            if edit_player_id == player.id:
+                edit_player = player.dict()
     return [
         c.Page(
             components=[
@@ -236,18 +235,23 @@ def user_form(player: str = Depends(check_admin_user)):
                 c.Table(
                     data=players,
                     columns=[
+                        DisplayLookup(field='edit', on_click=GoToEvent(url='/users/edit/?edit_player_id={id}')),
                         DisplayLookup(field='name', on_click=GoToEvent(
                             url='/?player_id={hash}')),
                         DisplayLookup(field='phone_number'),
+                        DisplayLookup(field='text_notifications'),
                         DisplayLookup(field='admin')
                     ]
                 ),
                 c.Heading(text='User Form', level=2),
-                c.ModelForm(model=UserForm, submit_url='/api/users/create/'),
+                c.ModelForm(model=UserForm, initial=edit_player, submit_url='/api/users/create/'),
             ]
         )
     ]
 
+@app.get("/api/users/edit/", response_model=FastUI, response_model_exclude_none=True)
+def user_created(edit_player_id: str, player: Player = Depends(get_player_interface)):
+    return [c.FireEvent(event=GoToEvent(url=f'/users/?edit_player_id={edit_player_id}'))]
 
 @app.get("/api/users/json", response_model=SelectSearchResponse)
 def user_form(player: str = Depends(check_admin_user), format: str = None):

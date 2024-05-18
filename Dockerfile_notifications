@@ -1,0 +1,17 @@
+# Use the official Python base image
+FROM python:3.11-slim
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Copy the requirements file
+COPY requirements_notifications.txt .
+
+# Install the Python dependencies
+RUN pip install --no-cache-dir -r requirements_notifications.txt
+
+# Copy the FastAPI application code into the container
+COPY app /app
+
+# Start the FastAPI application
+CMD ["python3", "notifications.py"]

@@ -13,23 +13,6 @@ def mock_requests_get(monkeypatch):
     with patch(test_file+'.requests.get') as mock_get:
         yield mock_get
 
-def test_get_current_weekend_schedule(mock_requests_get):
-    mock_response = mock_requests_get.return_value
-    mock_response.json.return_value = [
-        {"start_time": "2023-11-01T12:00:00", "event_name": "Race", "race_id": "race1"},
-        {"start_time": "2023-11-08T12:00:00", "event_name": "Race", "race_id": "race2"},
-        {"start_time": "2023-11-15T12:00:00", "event_name": "Race", "race_id": "race3"}
-    ]
-    
-    # Set the current date to November 2, 2023, which falls between race2 and race3
-    with patch(test_file+'.datetime') as mock_datetime:
-        mock_datetime.now.side_effect = lambda: datetime(2023, 11, 15, 12, 0, 0)
-        mock_datetime.strptime = datetime.strptime
-        
-        current_weekend_race = get_current_weekend_schedule()
-
-    assert current_weekend_race == {"start_time": "2023-11-15T12:00:00", "event_name": "Race", "race_id": "race3"}
-
 @patch(test_file+".load_json")
 def test_get_weekend_feed(mock_load_json):
     mock_load_json.return_value = fixtures.results

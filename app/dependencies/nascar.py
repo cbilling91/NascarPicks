@@ -11,9 +11,8 @@ from fastapi import Cookie, Response, HTTPException, Depends
 from dapr.clients import DaprClient
 from fastui.forms import SelectSearchResponse
 from cachetools import TTLCache
-from uuid import uuid4
 
-from app.models.nascar import ScheduleItem, Driver, RaceDriver, DriverResult, DriverPoints, WeekendFeed, PlayerList, Player, Players, LapTimes, StagePoints
+from app.models.nascar import ScheduleItem, Driver, DriverPoints, WeekendFeed, Player, LapTimes, StagePoints
 
 dapr_client = DaprClient()
 STATE_STORE = 'nascar-db'
@@ -73,12 +72,21 @@ def get_full_schedule():
     return schedule_data
 
 
-def get_full_race_schedule_model(id=None):
+def get_full_race_schedule_model(id=None, one_week_in_future_only=None):
     full_schedule = get_full_schedule()
+    current_date = datetime.now()
     full_schedule_sorted = sorted(
         full_schedule, key=lambda x: x['start_time_utc'])
-    filtered_schedule = {item['race_id']: ScheduleItem(**item) for item in full_schedule_sorted if (
-        'Race' in item['event_name'] and (id == None or str(item['race_id']) == id))}
+    filtered_schedule = {
+        item['race_id']: ScheduleItem(**item) for item in full_schedule_sorted if (
+            'Race' in item['event_name']
+            and
+            (id == None or str(item['race_id']) == id)
+            and
+            (not one_week_in_future_only or datetime.strptime(
+                item["start_time_utc"], "%Y-%m-%dT%H:%M:%S") < current_date + timedelta(days=7))
+        )
+    }
     filtered_schedule = list(filtered_schedule.values())
     if id:
         return filtered_schedule[0]
@@ -97,7 +105,7 @@ def get_current_weekend_schedule():
     for race in schedule_data:
         if race['event_name'] == 'Race':
             race_date = datetime.strptime(
-                race["start_time"], "%Y-%m-%dT%H:%M:%S")
+                race["start_time_utc"], "%Y-%m-%dT%H:%M:%S")
             if current_date <= race_date <= current_date + timedelta(days=6):
                 current_weekend_race = race
                 break
@@ -311,6 +319,7 @@ def publish_user(form):
         'phone_number': form.phone_number,
         'hash': encoded_hash,
         'type': 'player',
+        'text_notifications': form.text_notifications,
         'admin': form.admin
     }
     print(payload)
@@ -361,8 +370,13 @@ def get_player(player_hash=None, player_id=None):
         return Player(name='Unknown', phone_number='9999999999', id="1234567890", hash="1234567890", type="player")
 
 
-#@cache_with_ttl(ttl_seconds=60)
-def get_players():
+# @cache_with_ttl(ttl_seconds=60)
+def get_players(id: str = None):
+    if id:
+        player = dapr_client.get_state(
+            store_name=STATE_STORE, key=id
+        )
+        return Player(**player.json())
     player_query = {
         "filter": {
             "EQ": {"type": "player"}
