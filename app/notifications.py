@@ -53,7 +53,7 @@ next_race = get_full_race_schedule_model(one_week_in_future_only=True)[-1]
 for player in players:
     if player.text_notifications:
         print(player.phone_number)
-        message = f"NASCAR Picks League! Make your picks for the {next_race.race_name} at {next_race.track_name}: https://nascar-frontend-demo--nascarpicks-v5.lemonbush-6bcc1f8d.eastus.azurecontainerapps.io/picks/{next_race.race_id}/?player_id={player.hash}"
+        message = f"NASCAR Picks League! Make your picks for the {next_race.race_name} at {next_race.track_name}: https://nascar-frontend-demo.lemonbush-6bcc1f8d.eastus.azurecontainerapps.io/picks/{next_race.race_id}/?player_id={player.hash}"
         print(message)
         message = twilio_client.messages.create(
           from_='+18335431795',
