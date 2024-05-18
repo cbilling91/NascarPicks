@@ -50,18 +50,17 @@ players = [Player(**item['value']) for item in players_raw]
 
 next_race = get_full_race_schedule_model(one_week_in_future_only=True)[-1]
 
-
 for player in players:
     if player.text_notifications:
         print(player.phone_number)
         message = f"NASCAR Picks League! Make your picks for the {next_race.race_name} at {next_race.track_name}: https://nascar-frontend-demo--nascarpicks-v5.lemonbush-6bcc1f8d.eastus.azurecontainerapps.io/picks/{next_race.race_id}/?player_id={player.hash}"
         print(message)
-        # message = client.messages.create(
-        #   from_='+18335431795',
-        #   body=message,
-        #   to=f'+1{player.phone_number}'
-        # )
-        # print(message.sid)
+        message = client.messages.create(
+          from_='+18335431795',
+          body=message,
+          to=f'+1{player.phone_number}'
+        )
+        print(message.sid)
 
 
 
