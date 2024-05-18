@@ -22,17 +22,17 @@ from app.models.nascar import Player
 key = os.getenv("PRIMARY_KEY")
 connection_string = f"AccountEndpoint=https://nascar-picks-cosmosdb-account.documents.azure.com:443/;AccountKey={key}"
 
-client = Client()
+twilio_client = Client()
 
 # Initialize the Cosmos client
-client = CosmosClient.from_connection_string(connection_string)
+cosmos_client = CosmosClient.from_connection_string(connection_string)
 
 # Specify the database and container you want to work with
 database_name = 'nascar-database'
 container_name = 'nascar-collection'
 
 # Access the database and container
-database = client.get_database_client(database_name)
+database = cosmos_client.get_database_client(database_name)
 container = database.get_container_client(container_name)
 
 query = "SELECT * FROM c WHERE c['value'].type = @value"
@@ -55,7 +55,7 @@ for player in players:
         print(player.phone_number)
         message = f"NASCAR Picks League! Make your picks for the {next_race.race_name} at {next_race.track_name}: https://nascar-frontend-demo--nascarpicks-v5.lemonbush-6bcc1f8d.eastus.azurecontainerapps.io/picks/{next_race.race_id}/?player_id={player.hash}"
         print(message)
-        message = client.messages.create(
+        message = twilio_client.messages.create(
           from_='+18335431795',
           body=message,
           to=f'+1{player.phone_number}'
