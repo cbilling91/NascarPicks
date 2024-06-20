@@ -65,8 +65,8 @@ async def get_schedule(player: Player = Depends(get_player_interface)) -> list[A
 def form_content(race_id: str, player: Player = Depends(get_player_interface)):
     if type(player) == Response:
         return player
-    current_picks = get_driver_picks(player.id, race_id)
-    current_race = get_full_race_schedule_model(race_id)
+    current_picks = get_driver_picks(race_id, player.id)
+    current_race = get_full_race_schedule_model(int(race_id))
     print(current_picks)
 
     #utc_racetime = datetime.fromisoformat(current_race.start_time_utc)
@@ -97,10 +97,10 @@ def form_content(race_id: str, player: Player = Depends(get_player_interface)):
                 'search_url': f'/api/races/{race_id}/drivers/'
             }
             )
-        if current_picks:
+        if current_picks.root:
             components += [
                 c.Table(
-                    data=current_picks,
+                    data=current_picks.root[0].picks,
                     columns=[
                         DisplayLookup(field='Full_Name'),
                         DisplayLookup(field='Badge'),
@@ -145,16 +145,8 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
     """
     # results = get_results(race_id)
     results = get_driver_position(race_id)
-    driver_points = get_driver_points(race_id)
-
-    if not results:
-        hidden_picks = []
-        for driver in driver_points:
-            driver.pick_1 = "Hidden Till Race Start"
-            driver.pick_2 = "Hidden Till Race Start"
-            driver.pick_3 = "Hidden Till Race Start"
-            hidden_picks.append(driver)
-        driver_points = hidden_picks
+    driver_points = get_driver_points(race_id, active_standings=results)
+    current_race = get_full_race_schedule_model(race_id)
 
     components = []
     components += [
@@ -162,6 +154,8 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
             components=[c.Text(text='Back to Schedule')],
             on_click=GoToEvent(url='/'),
         ),
+        c.Heading(
+            text=f"{current_race.track_name} - {current_race.race_name}", level=1),
         c.Heading(text='Picks', level=2),
     ]
     if driver_points:
@@ -170,11 +164,22 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
                 data=driver_points,
                 columns=[
                     DisplayLookup(field='name'),
+                    DisplayLookup(field='total_points'),
                     DisplayLookup(field='pick_1'),
+                    DisplayLookup(field='pick_1_repeated_pick'),
+                    DisplayLookup(field='pick_1_stage_points'),
+                    DisplayLookup(field='pick_1_position_points'),
                     DisplayLookup(field='pick_2'),
+                    DisplayLookup(field='pick_2_repeated_pick'),
+                    DisplayLookup(field='pick_2_stage_points'),
+                    DisplayLookup(field='pick_2_position_points'),
                     DisplayLookup(field='pick_3'),
+                    DisplayLookup(field='pick_3_repeated_pick'),
+                    DisplayLookup(field='pick_3_stage_points'),
+                    DisplayLookup(field='pick_3_position_points'),
+                    DisplayLookup(field='penalty'),
                     DisplayLookup(field='stage_points'),
-                    DisplayLookup(field='total_points')
+                    
                 ]
             )
         ]
@@ -185,11 +190,11 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
 
     components += [c.Heading(text='Race', level=2)]
 
-    if results:
+    if results.laps:
         components += [
 
             c.Table(
-                data=results,
+                data=results.laps,
                 columns=[
                     DisplayLookup(field='RunningPos'),
                     DisplayLookup(field='FullName')

@@ -61,6 +61,12 @@ class Players(RootModel):
 class PlayerList(RootModel):
     root: List[Player]
 
+    def __iter__(self):
+        return iter(self.root)
+
+    def __getitem__(self, item):
+        return self.root[item]
+
 
 class ScheduleItem(BaseModel):
     start_time: str
@@ -367,11 +373,21 @@ class WeekendFeed(BaseModel):
 
 class DriverPoints(BaseModel):
     name: str
-    pick_1: str
-    pick_2: str
-    pick_3: str
-    stage_points: int = 0
     total_points: int = 0
+    pick_1: str
+    pick_1_repeated_pick: bool
+    pick_1_stage_points: int = 0
+    pick_1_position_points: int = 0
+    pick_2: str
+    pick_2_repeated_pick: bool
+    pick_2_stage_points: int = 0
+    pick_2_position_points: int = 0
+    pick_3: str
+    pick_3_repeated_pick: bool
+    pick_3_stage_points: int = 0
+    pick_3_position_points: int = 0
+    penalty: bool
+    stage_points: int = 0
 
 
 class Lap(BaseModel):
@@ -417,6 +433,23 @@ class StagePointsItem(BaseModel):
 
 class StagePoints(RootModel):
     root: List[StagePointsItem]
+
+    def __iter__(self):
+        return iter(self.root)
+
+    def __getitem__(self, item):
+        return self.root[item]
+
+
+class PicksItem(BaseModel):
+    type: str
+    picks: List[Driver]
+    player: str
+    race: str
+
+
+class PlayerPicks(RootModel):
+    root: List[PicksItem]
 
     def __iter__(self):
         return iter(self.root)
