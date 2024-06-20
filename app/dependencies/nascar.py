@@ -265,16 +265,19 @@ def get_driver_points(race_id, active_standings=True):
 
     race_picks = get_driver_picks(race_id)
     full_schedule = get_full_race_schedule_model()
-    for race_index in range(len(full_schedule)):
-        if full_schedule[race_index].race_id == race_id and race_index > 0:
-            race_type = ""
-            index_lookback = 0
-            while race_type != 'Race':
-                index_lookback += 1
-                previous_points_race = full_schedule[race_index-index_lookback]
-                race_type = previous_points_race.event_name
-            previous_race_picks = get_driver_picks(
-                previous_points_race.race_id)
+    current_race = get_full_race_schedule_model(id=race_id)
+    previous_race_picks = PlayerPicks(root=[])
+    if current_race.event_name == 'Race':
+        for race_index in range(len(full_schedule)):
+            if full_schedule[race_index].race_id == race_id and race_index > 0:
+                race_type = ""
+                index_lookback = 0
+                while race_type != 'Race':
+                    index_lookback += 1
+                    previous_points_race = full_schedule[race_index-index_lookback]
+                    race_type = previous_points_race.event_name
+                previous_race_picks = get_driver_picks(
+                    previous_points_race.race_id)
 
     results = get_driver_position(race_id)
     all_driver_stage_points = get_driver_stage_points(race_id)
@@ -314,16 +317,8 @@ def calculate_points(results: LapTimes, player_picks: PicksItem, all_driver_stag
                     "position_points": 0,
                     "total_points": 0
                 }
-                #driver_name = get_drivers(id=pick)[0].Full_Name
                 if pick in repeated_picks:
-                    #pick.Full_Name += "-Rpt"
                     pick_data['repeated_pick'] = True
-                    # if not one_repeated_pick:
-                    #     one_repeated_pick = True
-                    # else:
-                    #     pick.Full_Name += "-X"
-                    #     #pick_names.append(pick.Full_Name)
-                    #     continue
                 pick_data['name'] = pick.Full_Name
                 position_points = 40
                 reduction = 5
@@ -346,7 +341,8 @@ def calculate_points(results: LapTimes, player_picks: PicksItem, all_driver_stag
                                 stage_points += driver_position.stage_points
                                 pick_data['stage_points'] += driver_position.stage_points
                                 break
-                pick_data['total_points'] = pick_data['stage_points'] + pick_data['position_points']
+                pick_data['total_points'] = pick_data['stage_points'] + \
+                    pick_data['position_points']
                 picks_data.append(pick_data)
     else:
         # pick_names = ["Hidden Till Race Start",
@@ -374,7 +370,7 @@ def calculate_points(results: LapTimes, player_picks: PicksItem, all_driver_stag
                 'total_points': 0
             }
         ]
-    picks_data = sorted(picks_data, key=lambda x: x['total_points'], reverse=True)
+    picks_data = sorted(picks_data, key=lambda x: x['total_points'])
     picks_data_penalize = []
     repeat_already = False
     penalty = False
@@ -387,6 +383,9 @@ def calculate_points(results: LapTimes, player_picks: PicksItem, all_driver_stag
             repeat_already = True
         picks_data_penalize.append(pick)
 
+    picks_data_penalize = sorted(
+        picks_data_penalize, key=lambda x: x['total_points'], reverse=True)
+
     stage_points = 0
     position_points = 0
     for picks in picks_data_penalize:
@@ -396,21 +395,21 @@ def calculate_points(results: LapTimes, player_picks: PicksItem, all_driver_stag
     player_points_dict = {
         "name": get_player(player_id=player_picks.player).name,
         "total_points": stage_points + position_points,
-        "pick_1": picks_data[0]['name'],
-        "pick_1_repeated_pick": picks_data[0]['repeated_pick'],
-        "pick_1_stage_points": picks_data[0]['stage_points'],
-        "pick_1_position_points": picks_data[0]['position_points'],
-        "pick_2": picks_data[1]['name'],
-        "pick_2_repeated_pick": picks_data[1]['repeated_pick'],
-        "pick_2_stage_points": picks_data[1]['stage_points'],
-        "pick_2_position_points": picks_data[1]['position_points'],
-        "pick_3": picks_data[2]['name'],
-        "pick_3_repeated_pick": picks_data[2]['repeated_pick'],
-        "pick_3_stage_points": picks_data[2]['stage_points'],
-        "pick_3_position_points": picks_data[2]['position_points'],
+        "pick_1": picks_data_penalize[0]['name'],
+        "pick_1_repeated_pick": picks_data_penalize[0]['repeated_pick'],
+        "pick_1_stage_points": picks_data_penalize[0]['stage_points'],
+        "pick_1_position_points": picks_data_penalize[0]['position_points'],
+        "pick_2": picks_data_penalize[1]['name'],
+        "pick_2_repeated_pick": picks_data_penalize[1]['repeated_pick'],
+        "pick_2_stage_points": picks_data_penalize[1]['stage_points'],
+        "pick_2_position_points": picks_data_penalize[1]['position_points'],
+        "pick_3": picks_data_penalize[2]['name'],
+        "pick_3_repeated_pick": picks_data_penalize[2]['repeated_pick'],
+        "pick_3_stage_points": picks_data_penalize[2]['stage_points'],
+        "pick_3_position_points": picks_data_penalize[2]['position_points'],
         "penalty": penalty,
         "stage_points": stage_points,
-        
+
     }
     return DriverPoints(**player_points_dict)
 
