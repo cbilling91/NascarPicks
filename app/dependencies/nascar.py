@@ -266,10 +266,14 @@ def get_driver_points(race_id, active_standings=True):
     race_picks = get_driver_picks(race_id)
     full_schedule = get_full_race_schedule_model()
     current_race = get_full_race_schedule_model(id=race_id)
+    points_race_begin = False
     previous_race_picks = PlayerPicks(root=[])
     if current_race.event_name == 'Race':
         for race_index in range(len(full_schedule)):
-            if full_schedule[race_index].race_id == race_id and race_index > 0:
+            if full_schedule[race_index].race_name == "DAYTONA 500":
+                points_race_begin = True
+                continue
+            if full_schedule[race_index].race_id == race_id and race_index > 0 and points_race_begin:
                 race_type = ""
                 index_lookback = 0
                 while race_type != 'Race':
