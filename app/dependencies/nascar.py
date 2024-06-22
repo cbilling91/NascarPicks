@@ -311,7 +311,7 @@ def calculate_points(results: LapTimes, player_picks: PicksItem, all_driver_stag
     points = 0
     stage_points = 0
     picks_data = []
-    if active_standings:
+    if active_standings.laps or active_standings.flags:
         if results:
             for pick in player_picks.picks:
                 pick_data = {

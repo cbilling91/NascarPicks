@@ -164,6 +164,7 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
                 data=driver_points,
                 columns=[
                     DisplayLookup(field='name'),
+                    DisplayLookup(field='stage_points'),
                     DisplayLookup(field='total_points'),
                     DisplayLookup(field='pick_1'),
                     DisplayLookup(field='pick_1_repeated_pick'),
@@ -177,9 +178,7 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
                     DisplayLookup(field='pick_3_repeated_pick'),
                     DisplayLookup(field='pick_3_stage_points'),
                     DisplayLookup(field='pick_3_position_points'),
-                    DisplayLookup(field='penalty'),
-                    DisplayLookup(field='stage_points'),
-                    
+                    DisplayLookup(field='penalty')
                 ]
             )
         ]
