@@ -1,13 +1,11 @@
-import os
 import json
 
 import pytest
-from datetime import datetime, timedelta
 from unittest.mock import patch
 
-from app.dependencies.nascar import get_current_weekend_schedule, get_weekend_feed, get_drivers_list, get_drivers, calculate_points, get_driver_points
-from app.models.nascar import Driver, Result, Position, LapTimes, PicksItem, StagePoints, PlayerPicks, PickPoints, DriverPoints
-from tests import fixtures, utils
+from app.dependencies.nascar import get_weekend_feed, get_drivers_list, get_drivers, calculate_points
+from app.models.nascar import Driver, LapTimes, PicksItem, StagePoints, PlayerPicks, PickPoints, DriverPoints
+from tests import fixtures
 
 test_file = "app.dependencies.nascar"
 
