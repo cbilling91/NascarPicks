@@ -141,7 +141,7 @@ def test_get_driver_points():
     all_divers_stage_points = StagePoints(load_json_file("./variables/all_drivers_stage_points.json"))
     previous_race_picks = PlayerPicks(load_json_file("./variables/previous_race_picks.json"))
 
-    calculated_points = calculate_points(results, player_picks, all_divers_stage_points, previous_race_picks)
+    calculated_points = calculate_points(results, 'Chase Billing', player_picks, all_divers_stage_points, previous_race_picks)
     assert calculated_points.model_dump() == DriverPoints(
         name="Chase Billing",
         stage_points= 24,

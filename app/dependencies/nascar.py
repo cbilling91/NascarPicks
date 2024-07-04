@@ -290,8 +290,9 @@ def get_driver_points(race_id, active_standings=True):
     players_points = []
     for player_picks in race_picks:
         # player_picks_dict = player_picks.json()
+        player_name=get_player(player_id=player_picks.player).name
         player_points = calculate_points(
-            results, player_picks, all_driver_stage_points, previous_race_picks)
+            results, player_name, player_picks, all_driver_stage_points, previous_race_picks)
         players_points.append(player_points)
     players_points = sorted(
         players_points, key=lambda x: getattr(x, 'total_points'), reverse=True)
@@ -300,7 +301,7 @@ def get_driver_points(race_id, active_standings=True):
 ##
 ## TODO: This function is way too big. It should be broken up
 ##
-def calculate_points(results: LapTimes, player_picks: PicksItem, all_driver_stage_points: StagePoints, previous_race_picks: PlayerPicks) -> DriverPoints:
+def calculate_points(results: LapTimes, player_name: str, player_picks: PicksItem, all_driver_stage_points: StagePoints, previous_race_picks: PlayerPicks) -> DriverPoints:
     repeated_picks = []
     penalty = False
     for previous_pick in previous_race_picks:
@@ -341,7 +342,7 @@ def calculate_points(results: LapTimes, player_picks: PicksItem, all_driver_stag
                             stage_points += driver_position.stage_points
                             picks_data[index].stage_points += driver_position.stage_points
                             break
-    return DriverPoints(name=get_player(player_id=player_picks.player).name, picks=picks_data)
+    return DriverPoints(name=player_name, picks=picks_data)
 
 def publish_user(form):
     key = f'player-{form.name.replace(" ", "-").lower()}-{form.phone_number}'
