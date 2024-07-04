@@ -12,7 +12,7 @@ from dapr.clients import DaprClient
 from fastui.forms import SelectSearchResponse
 from cachetools import TTLCache
 
-from app.models.nascar import ScheduleItem, Driver, DriverPoints, WeekendFeed, Player, LapTimes, StagePoints, PlayerPicks, PicksItem
+from app.models.nascar import ScheduleItem, Driver, DriverPoints, WeekendFeed, Player, LapTimes, StagePoints, PlayerPicks, PicksItem, PickPoints
 
 dapr_client = DaprClient()
 STATE_STORE = 'nascar-db'
@@ -260,7 +260,9 @@ def get_driver_picks(race_id, player_id=None) -> PlayerPicks:
     race_picks_model = PlayerPicks(race_picks_list)
     return race_picks_model
 
-
+##
+## TODO: Looping through full lists too much
+##
 def get_driver_points(race_id, active_standings=True):
 
     race_picks = get_driver_picks(race_id)
@@ -289,14 +291,16 @@ def get_driver_points(race_id, active_standings=True):
     for player_picks in race_picks:
         # player_picks_dict = player_picks.json()
         player_points = calculate_points(
-            results, player_picks, all_driver_stage_points, previous_race_picks, active_standings)
+            results, player_picks, all_driver_stage_points, previous_race_picks)
         players_points.append(player_points)
     players_points = sorted(
         players_points, key=lambda x: getattr(x, 'total_points'), reverse=True)
     return players_points
 
-
-def calculate_points(results: LapTimes, player_picks: PicksItem, all_driver_stage_points: StagePoints, previous_race_picks: PlayerPicks, active_standings: bool) -> DriverPoints:
+##
+## TODO: This function is way too big. It should be broken up
+##
+def calculate_points(results: LapTimes, player_picks: PicksItem, all_driver_stage_points: StagePoints, previous_race_picks: PlayerPicks) -> DriverPoints:
     repeated_picks = []
     penalty = False
     for previous_pick in previous_race_picks:
@@ -307,116 +311,37 @@ def calculate_points(results: LapTimes, player_picks: PicksItem, all_driver_stag
                 for current in player_picks.picks
                 if previous.model_dump() == current.model_dump()
             ]
-
     points = 0
     stage_points = 0
-    picks_data = []
-    if active_standings.laps or active_standings.flags:
-        if results:
-            for pick in player_picks.picks:
-                pick_data = {
-                    "name": "",
-                    "repeated_pick": False,
-                    "stage_points": 0,
-                    "position_points": 0,
-                    "total_points": 0
-                }
-                if pick in repeated_picks:
-                    pick_data['repeated_pick'] = True
-                pick_data['name'] = pick.Full_Name
-                position_points = 40
-                reduction = 5
-                for result in results.laps:
-                    if pick.Nascar_Driver_ID == result.NASCARDriverID:
-                        points += position_points
-                        pick_data['position_points'] = position_points
-                        # points += result.points_earned
-                        break
-                    position_points -= reduction
-                    if position_points < 0:
-                        position_points = 0
-                    reduction = 1
-                pick_data['stage_points'] = 0
-                if all_driver_stage_points.root:
-                    for stage in all_driver_stage_points:
-                        for driver_position in stage.results:
-                            if pick.Nascar_Driver_ID == driver_position.driver_id:
-                                points += driver_position.stage_points
-                                stage_points += driver_position.stage_points
-                                pick_data['stage_points'] += driver_position.stage_points
-                                break
-                pick_data['total_points'] = pick_data['stage_points'] + \
-                    pick_data['position_points']
-                picks_data.append(pick_data)
-    else:
-        # pick_names = ["Hidden Till Race Start",
-        #               "Hidden Till Race Start", "Hidden Till Race Start"]
-        picks_data = [
-            {
-                'name': "Hidden Till Race Start",
-                "repeated_pick": False,
-                'stage_points': 0,
-                'position_points': 0,
-                'total_points': 0
-            },
-            {
-                'name': "Hidden Till Race Start",
-                "repeated_pick": False,
-                'stage_points': 0,
-                'position_points': 0,
-                'total_points': 0
-            },
-            {
-                'name': "Hidden Till Race Start",
-                "repeated_pick": False,
-                'stage_points': 0,
-                'position_points': 0,
-                'total_points': 0
-            }
-        ]
-    picks_data = sorted(picks_data, key=lambda x: x['total_points'])
-    picks_data_penalize = []
-    repeat_already = False
-    penalty = False
-    for pick in picks_data:
-        if pick['repeated_pick']:
-            if repeat_already:
-                penalty = True
-                pick['stage_points'] = 0
-                pick['position_points'] = 0
-            repeat_already = True
-        picks_data_penalize.append(pick)
-
-    picks_data_penalize = sorted(
-        picks_data_penalize, key=lambda x: x['total_points'], reverse=True)
-
-    stage_points = 0
-    position_points = 0
-    for picks in picks_data_penalize:
-        stage_points += picks['stage_points']
-        position_points += picks['position_points']
-
-    player_points_dict = {
-        "name": get_player(player_id=player_picks.player).name,
-        "total_points": stage_points + position_points,
-        "pick_1": picks_data_penalize[0]['name'],
-        "pick_1_repeated_pick": picks_data_penalize[0]['repeated_pick'],
-        "pick_1_stage_points": picks_data_penalize[0]['stage_points'],
-        "pick_1_position_points": picks_data_penalize[0]['position_points'],
-        "pick_2": picks_data_penalize[1]['name'],
-        "pick_2_repeated_pick": picks_data_penalize[1]['repeated_pick'],
-        "pick_2_stage_points": picks_data_penalize[1]['stage_points'],
-        "pick_2_position_points": picks_data_penalize[1]['position_points'],
-        "pick_3": picks_data_penalize[2]['name'],
-        "pick_3_repeated_pick": picks_data_penalize[2]['repeated_pick'],
-        "pick_3_stage_points": picks_data_penalize[2]['stage_points'],
-        "pick_3_position_points": picks_data_penalize[2]['position_points'],
-        "penalty": penalty,
-        "stage_points": stage_points,
-
-    }
-    return DriverPoints(**player_points_dict)
-
+    picks_data = [PickPoints(), PickPoints(), PickPoints()]
+    if results.laps or results.flags:
+        for index, pick in enumerate(player_picks.picks):
+            if pick in repeated_picks:
+                picks_data[index].repeated_pick = True
+            picks_data[index].name = pick.Full_Name
+            position_points = 40
+            reduction = 5
+            for result in results.laps:
+                if pick.Nascar_Driver_ID == result.NASCARDriverID:
+                    points += position_points
+                    picks_data[index].position_points = position_points
+                    break
+                position_points -= reduction
+                if position_points < 0:
+                    position_points = 0
+                reduction = 1
+            picks_data[index].stage_points = 0
+            if all_driver_stage_points.root:
+                for stage in all_driver_stage_points:
+                    for driver_position in stage.results:
+                        if pick.Nascar_Driver_ID == driver_position.driver_id:
+                            points += driver_position.stage_points
+                            if driver_position.stage_points == 10:
+                                picks_data[index].stage_wins += 1
+                            stage_points += driver_position.stage_points
+                            picks_data[index].stage_points += driver_position.stage_points
+                            break
+    return DriverPoints(name=get_player(player_id=player_picks.player).name, picks=picks_data)
 
 def publish_user(form):
     key = f'player-{form.name.replace(" ", "-").lower()}-{form.phone_number}'

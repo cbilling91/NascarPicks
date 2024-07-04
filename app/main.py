@@ -145,7 +145,7 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
     """
     # results = get_results(race_id)
     results = get_driver_position(race_id)
-    driver_points = get_driver_points(race_id, active_standings=results)
+    driver_points = get_driver_points(race_id)
     current_race = get_full_race_schedule_model(race_id)
 
     components = []
@@ -166,18 +166,25 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
                     DisplayLookup(field='name'),
                     DisplayLookup(field='stage_points'),
                     DisplayLookup(field='total_points'),
+                    DisplayLookup(field='total_playoff_points'),
                     DisplayLookup(field='pick_1'),
                     DisplayLookup(field='pick_1_repeated_pick'),
                     DisplayLookup(field='pick_1_stage_points'),
+                    DisplayLookup(field='pick_1_stage_wins'),
                     DisplayLookup(field='pick_1_position_points'),
+                    DisplayLookup(field='pick_1_playoff_points'),
                     DisplayLookup(field='pick_2'),
                     DisplayLookup(field='pick_2_repeated_pick'),
                     DisplayLookup(field='pick_2_stage_points'),
+                    DisplayLookup(field='pick_2_stage_wins'),
                     DisplayLookup(field='pick_2_position_points'),
+                    DisplayLookup(field='pick_2_playoff_points'),
                     DisplayLookup(field='pick_3'),
                     DisplayLookup(field='pick_3_repeated_pick'),
                     DisplayLookup(field='pick_3_stage_points'),
+                    DisplayLookup(field='pick_3_stage_wins'),
                     DisplayLookup(field='pick_3_position_points'),
+                    DisplayLookup(field='pick_3_playoff_points'),
                     DisplayLookup(field='penalty')
                 ]
             )

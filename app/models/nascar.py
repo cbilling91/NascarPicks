@@ -372,22 +372,85 @@ class WeekendFeed(BaseModel):
 
 
 class DriverPoints(BaseModel):
-    name: str
-    total_points: int = 0
-    pick_1: str
-    pick_1_repeated_pick: bool
-    pick_1_stage_points: int = 0
-    pick_1_position_points: int = 0
-    pick_2: str
-    pick_2_repeated_pick: bool
-    pick_2_stage_points: int = 0
-    pick_2_position_points: int = 0
-    pick_3: str
-    pick_3_repeated_pick: bool
-    pick_3_stage_points: int = 0
-    pick_3_position_points: int = 0
-    penalty: bool
+    picks: List[PickPoints] = []
+    name: str = ""
     stage_points: int = 0
+    position_points: int = 0
+    total_points: int = 0
+    total_playoff_points: int = 0
+    pick_1: str = ""
+    pick_1_repeated_pick: bool = False
+    pick_1_stage_points: int = 0
+    pick_1_stage_wins: int = 0
+    pick_1_position_points: int = 0
+    pick_1_total_points: int = 0
+    pick_1_playoff_points: int = 0
+    pick_2: str = ""
+    pick_2_repeated_pick: bool = False
+    pick_2_stage_points: int = 0
+    pick_2_stage_wins: int = 0
+    pick_2_position_points: int = 0
+    pick_2_total_points: int = 0
+    pick_2_playoff_points: int = 0
+    pick_3: str = ""
+    pick_3_repeated_pick: bool = False
+    pick_3_stage_points: int = 0
+    pick_3_stage_wins: int = 0
+    pick_3_position_points: int = 0
+    pick_3_total_points: int = 0
+    pick_3_playoff_points: int = 0
+    penalty: bool = False
+
+    @root_validator(pre=True)
+    def flatten_items(cls, values):
+        picks = values.get('picks', [])
+        if picks:
+            sorted_picks = sorted(picks, key=lambda x: x.stage_points + x.position_points)
+            stage_points = 0
+            position_points = 0
+            repeated_picks = 0
+            total_playoff_points = 0
+            for index, item in enumerate(sorted_picks):
+                reverse_index = len(sorted_picks) - index
+                values[f'pick_{reverse_index}'] = item.name
+                values[f'pick_{reverse_index}_repeated_pick'] = item.repeated_pick
+                if item.repeated_pick:
+                    repeated_picks += 1
+                if repeated_picks < 2:
+                    values[f'pick_{reverse_index}_stage_points'] = item.stage_points
+                    values[f'pick_{reverse_index}_stage_wins'] = item.stage_wins
+                    values[f'pick_{reverse_index}_position_points'] = item.position_points
+                    playoff_points = 0
+                    if item.position_points >= 27:
+                        if item.position_points == 40:
+                            playoff_points = 10
+                        else:
+                            playoff_points = item.position_points - 26
+                    playoff_points += item.stage_wins
+                    values[f'pick_{reverse_index}_playoff_points'] = playoff_points
+                    values[f'pick_{reverse_index}_total_points'] = item.stage_points + item.position_points
+                    stage_points += item.stage_points
+                    position_points += item.position_points
+                    total_playoff_points += playoff_points
+
+            values['stage_points'] = stage_points
+            values['position_points'] = position_points
+            values['total_points'] = position_points + stage_points
+            values['total_playoff_points'] = total_playoff_points
+            if repeated_picks > 1:
+                values['penalty'] = True
+            else:
+                values['penalty'] = False
+            values['picks'] = []
+        return values
+
+
+class PickPoints(BaseModel):
+    name: str = ""
+    repeated_pick: bool = False
+    stage_wins: int = 0
+    stage_points: int = 0
+    position_points: int = 0
 
 
 class Lap(BaseModel):
