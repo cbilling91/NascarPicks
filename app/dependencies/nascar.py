@@ -263,7 +263,7 @@ def get_driver_picks(race_id, player_id=None) -> PlayerPicks:
 ##
 ## TODO: Looping through full lists repeatedly is bad!
 ##
-def get_driver_points(race_id, active_standings=True):
+def get_driver_points(race_id):
 
     race_picks = get_driver_picks(race_id)
     full_schedule = get_full_race_schedule_model()
@@ -307,38 +307,39 @@ def get_driver_points(race_id, active_standings=True):
         0,
         0
     ]
-    for index, player_points in enumerate(players_points):
-        if not skip_next:
-            if points_position < 3:
-                if points_position < len(players_points)-1:
-                    if player_points.total_points == players_points[index+1].total_points:
-                        if player_points.pick_1 == players_points[index+1].pick_1 and player_points.pick_2 == players_points[index+1].pick_2 and player_points.pick_3 == players_points[index+1].pick_3:
-                            players_points[index+1].total_playoff_points += points_dict[points_position]
-                            players_points[index].total_playoff_points += points_dict[points_position]
+    if results.laps or results.flags:
+        for index, player_points in enumerate(players_points):
+            if not skip_next:
+                if points_position < 3:
+                    if points_position < len(players_points)-1:
+                        if player_points.total_points == players_points[index+1].total_points:
+                            if player_points.pick_1 == players_points[index+1].pick_1 and player_points.pick_2 == players_points[index+1].pick_2 and player_points.pick_3 == players_points[index+1].pick_3:
+                                players_points[index+1].total_playoff_points += points_dict[points_position]
+                                players_points[index].total_playoff_points += points_dict[points_position]
+                            else:
+                                for pick in range(1, 4):
+                                    current_pick_points = getattr(player_points, f"pick_{pick}_position_points")
+                                    next_pick_points = getattr(players_points[index+1], f"pick_{pick}_position_points")
+                                    if current_pick_points != next_pick_points:
+                                        if current_pick_points > next_pick_points:
+                                            players_points[index].total_playoff_points += points_dict[points_position]
+                                            points_position += 1
+                                            players_points[index+1].total_playoff_points += points_dict[points_position]
+                                            skip_next = True
+                                            break
+                                        else:
+                                            players_points[index+1].total_playoff_points += points_dict[points_position]
+                                            points_position += 1
+                                            players_points[index].total_playoff_points += points_dict[points_position]
+                                            skip_next = True
+                                            break
                         else:
-                            for pick in range(1, 4):
-                                current_pick_points = getattr(player_points, f"pick_{pick}_position_points")
-                                next_pick_points = getattr(players_points[index+1], f"pick_{pick}_position_points")
-                                if current_pick_points != next_pick_points:
-                                    if current_pick_points > next_pick_points:
-                                        players_points[index].total_playoff_points += points_dict[points_position]
-                                        points_position += 1
-                                        players_points[index+1].total_playoff_points += points_dict[points_position]
-                                        skip_next = True
-                                        break
-                                    else:
-                                        players_points[index+1].total_playoff_points += points_dict[points_position]
-                                        points_position += 1
-                                        players_points[index].total_playoff_points += points_dict[points_position]
-                                        skip_next = True
-                                        break
+                            players_points[index].total_playoff_points += points_dict[points_position]
                     else:
                         players_points[index].total_playoff_points += points_dict[points_position]
-                else:
-                    players_points[index].total_playoff_points += points_dict[points_position]
-            points_position += 1
-        else:
-            skip_next = False
+                points_position += 1
+            else:
+                skip_next = False
     return players_points
 
 ##
