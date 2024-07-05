@@ -421,11 +421,8 @@ class DriverPoints(BaseModel):
                     values[f'pick_{reverse_index}_stage_wins'] = item.stage_wins
                     values[f'pick_{reverse_index}_position_points'] = item.position_points
                     playoff_points = 0
-                    if item.position_points >= 27:
-                        if item.position_points == 40:
-                            playoff_points = 10
-                        else:
-                            playoff_points = item.position_points - 26
+                    if item.position_points == 40:
+                        playoff_points = 5
                     playoff_points += item.stage_wins
                     values[f'pick_{reverse_index}_playoff_points'] = playoff_points
                     values[f'pick_{reverse_index}_total_points'] = item.stage_points + item.position_points
