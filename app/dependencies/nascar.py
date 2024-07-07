@@ -372,8 +372,8 @@ def calculate_points(results: LapTimes, player_name: str, player_picks: PicksIte
                     picks_data[index].position_points = position_points
                     break
                 position_points -= reduction
-                if position_points < 0:
-                    position_points = 0
+                if position_points < 1:
+                    position_points = 1
                 reduction = 1
             picks_data[index].stage_points = 0
             if all_driver_stage_points.root:
