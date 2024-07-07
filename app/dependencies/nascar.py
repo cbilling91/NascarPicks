@@ -381,10 +381,11 @@ def calculate_points(results: LapTimes, player_name: str, player_picks: PicksIte
                     for driver_position in stage.results:
                         if pick.Nascar_Driver_ID == driver_position.driver_id:
                             points += driver_position.stage_points
-                            if driver_position.stage_points == 10:
+                            if driver_position.position == 1:
                                 picks_data[index].stage_wins += 1
-                            stage_points += driver_position.stage_points
-                            picks_data[index].stage_points += driver_position.stage_points
+                            if driver_position.position <= 10:
+                                stage_points += (11 - driver_position.position)
+                                picks_data[index].stage_points += (11 - driver_position.position)
                             break
     return DriverPoints(name=player_name, picks=picks_data)
 
