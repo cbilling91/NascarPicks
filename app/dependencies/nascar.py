@@ -180,7 +180,8 @@ def get_race_drivers_search_model(race_id) -> SelectSearchResponse:
 
 def get_drivers(series=None, id=None, query=None) -> list[Driver]:
     drivers = load_json("https://cf.nascar.com/cacher/drivers.json")
-    drivers_models = [Driver(**item) for item in drivers['response'] if (series == None or item['Driver_Series'] == series) and (
+    #  or item['Driver_Series'] == series
+    drivers_models = [Driver(**item) for item in drivers['response'] if (series == None or True) and (
         id == None or item['Nascar_Driver_ID'] == int(id)) and item['Crew_Chief'] and (not query or query.lower() in item['Full_Name'].lower())]
     drivers_models = sorted(drivers_models, key=lambda x: x.Full_Name)
     return drivers_models

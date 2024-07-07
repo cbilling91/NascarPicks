@@ -172,19 +172,16 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
                     DisplayLookup(field='pick_1_stage_points'),
                     DisplayLookup(field='pick_1_stage_wins'),
                     DisplayLookup(field='pick_1_position_points'),
-                    DisplayLookup(field='pick_1_playoff_points'),
                     DisplayLookup(field='pick_2'),
                     DisplayLookup(field='pick_2_repeated_pick'),
                     DisplayLookup(field='pick_2_stage_points'),
                     DisplayLookup(field='pick_2_stage_wins'),
                     DisplayLookup(field='pick_2_position_points'),
-                    DisplayLookup(field='pick_2_playoff_points'),
                     DisplayLookup(field='pick_3'),
                     DisplayLookup(field='pick_3_repeated_pick'),
                     DisplayLookup(field='pick_3_stage_points'),
                     DisplayLookup(field='pick_3_stage_wins'),
                     DisplayLookup(field='pick_3_position_points'),
-                    DisplayLookup(field='pick_3_playoff_points'),
                     DisplayLookup(field='penalty')
                 ]
             )
