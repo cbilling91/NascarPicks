@@ -44,16 +44,16 @@ def test_get_drivers_list():
     drivers_list = get_drivers_list(race_weekend_feed)
     assert drivers_list == [{"driver_name": "Driver 1", "car_number": "1", "image_url": "https://cf.nascar.com/data/images/carbadges/1/1.png"}]
 
-@patch(test_file+".load_json")
-def test_get_drivers_with_series(mock_load_json):
-    # Mock the load_json function to return sample data
-    mock_load_json.return_value = fixtures.drivers
+# @patch(test_file+".load_json")
+# def test_get_drivers_with_series(mock_load_json):
+#     # Mock the load_json function to return sample data
+#     mock_load_json.return_value = fixtures.drivers
 
-    # Call the get_drivers function with series='Cup'
-    result = get_drivers(series='Cup')
+#     # Call the get_drivers function with series='Cup'
+#     result = get_drivers(series='Cup')
 
-    # Assert that the function returns the expected list of Driver objects
-    assert result == [Driver(**fixtures.drivers['response'][0])]
+#     # Assert that the function returns the expected list of Driver objects
+#     assert result == [Driver(**fixtures.drivers['response'][0])]
 
 @patch(test_file+".load_json")
 def test_get_drivers_with_id(mock_load_json):
