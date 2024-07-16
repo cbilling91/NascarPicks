@@ -317,6 +317,7 @@ def get_driver_points(race_id):
                             if player_points.pick_1 == players_points[index+1].pick_1 and player_points.pick_2 == players_points[index+1].pick_2 and player_points.pick_3 == players_points[index+1].pick_3:
                                 players_points[index+1].total_playoff_points += points_dict[points_position]
                                 players_points[index].total_playoff_points += points_dict[points_position]
+                                skip_next = True
                             else:
                                 for pick in range(1, 4):
                                     current_pick_points = getattr(player_points, f"pick_{pick}_position_points")
@@ -340,7 +341,8 @@ def get_driver_points(race_id):
                         players_points[index].total_playoff_points += points_dict[points_position]
                 points_position += 1
             else:
-                skip_next = False
+                skip_next=False
+            
     return players_points
 
 ##
