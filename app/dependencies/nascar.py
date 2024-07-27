@@ -299,6 +299,7 @@ def get_driver_points(race_id):
         players_points, key=lambda x: getattr(x, 'total_points'), reverse=True)
     # Iterate over player points and assign playoff points to the top 3 total points scores
     points_position = 0
+    position_scores = 0
     skip_next = False
     points_dict = [
         10,
@@ -309,39 +310,21 @@ def get_driver_points(race_id):
         0
     ]
     if results.laps or results.flags:
-        for index, player_points in enumerate(players_points):
-            if not skip_next:
-                if points_position < 3:
-                    if points_position < len(players_points)-1:
-                        if player_points.total_points == players_points[index+1].total_points:
-                            if player_points.pick_1 == players_points[index+1].pick_1 and player_points.pick_2 == players_points[index+1].pick_2 and player_points.pick_3 == players_points[index+1].pick_3:
-                                players_points[index+1].total_playoff_points += points_dict[points_position]
-                                players_points[index].total_playoff_points += points_dict[points_position]
-                                skip_next = True
-                            else:
-                                for pick in range(1, 4):
-                                    current_pick_points = getattr(player_points, f"pick_{pick}_position_points")
-                                    next_pick_points = getattr(players_points[index+1], f"pick_{pick}_position_points")
-                                    if current_pick_points != next_pick_points:
-                                        if current_pick_points > next_pick_points:
-                                            players_points[index].total_playoff_points += points_dict[points_position]
-                                            points_position += 1
-                                            players_points[index+1].total_playoff_points += points_dict[points_position]
-                                            skip_next = True
-                                            break
-                                        else:
-                                            players_points[index+1].total_playoff_points += points_dict[points_position]
-                                            points_position += 1
-                                            players_points[index].total_playoff_points += points_dict[points_position]
-                                            skip_next = True
-                                            break
-                        else:
-                            players_points[index].total_playoff_points += points_dict[points_position]
-                    else:
-                        players_points[index].total_playoff_points += points_dict[points_position]
-                points_position += 1
-            else:
-                skip_next=False
+        last_pick_1 = 0
+        last_pick_2 = 0
+        last_pick_3 = 0
+        first = True
+        for player_points in players_points:
+            if position_scores < 3 or points_position < 3:
+                position_scores += 1
+                if (last_pick_1 != player_points.pick_1 or last_pick_2 != player_points.pick_2 or last_pick_3 != player_points.pick_3) and not first:
+                    points_position += 1
+                first = False
+                player_points.total_playoff_points += points_dict[points_position]
+
+                last_pick_1 = player_points.pick_1
+                last_pick_2 = player_points.pick_2
+                last_pick_3 = player_points.pick_3
             
     return players_points
 
