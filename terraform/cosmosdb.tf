@@ -11,8 +11,6 @@ resource "azurerm_cosmosdb_account" "nascar_db_account" {
     max_staleness_prefix   = 100
   }
 
-  enable_automatic_failover = true
-
   geo_location {
     location          = "East US"  # Replace with your desired region
     failover_priority = 0
