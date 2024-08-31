@@ -205,7 +205,7 @@ class Driver(BaseModel):
     Career_Stats: str
     Driver_Page: str
     Age: int
-    Rank: str
+    Rank: int
     Points: str
     Points_Behind: int
     No_Wins: str
