@@ -15,7 +15,7 @@ from cachetools import TTLCache
 from app.models.nascar import ScheduleItem, Driver, DriverPoints, WeekendFeed, Player, LapTimes, StagePoints, PlayerPicks, PicksItem, PickPoints
 
 dapr_client = DaprClient()
-STATE_STORE = 'nascar-db'
+STATE_STORE = 'nascar-cockroach-statestore'
 
 
 def cache_with_ttl(ttl_seconds):
