@@ -100,7 +100,7 @@ def test_picks_models():
     )
     pick_points_list = [pick_points_1, pick_points_2, pick_points_3]
     player_points = DriverPoints(
-        name="player", picks=pick_points_list)
+        name="player", playoff_race=0, picks=pick_points_list)
     
     player_model = DriverPoints(
         name="player",
@@ -141,7 +141,7 @@ def test_get_driver_points():
     all_divers_stage_points = StagePoints(load_json_file("./variables/all_drivers_stage_points.json"))
     previous_race_picks = PlayerPicks(load_json_file("./variables/previous_race_picks.json"))
 
-    calculated_points = calculate_points(results, 'Chase Billing', player_picks, all_divers_stage_points, previous_race_picks)
+    calculated_points = calculate_points(results, 'Chase Billing', player_picks, all_divers_stage_points, previous_race_picks, playoff_race=0)
     assert calculated_points.model_dump() == DriverPoints(
         name="Chase Billing",
         stage_points= 24,

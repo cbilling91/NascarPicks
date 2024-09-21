@@ -153,7 +153,15 @@ def get_driver_position(race_id) -> LapTimes:
         return positions_model
     except:
         return LapTimes(laps=[], flags=[])
+    
 
+def race_started(race_id):
+    laps_and_flags = get_driver_position(race_id=race_id)
+    for flag in laps_and_flags.flags:
+        if flag.FlagState == 1:
+            return True
+    return False
+        
 
 def get_driver_stage_points(race_id) -> StagePoints:
     try:
@@ -221,11 +229,14 @@ def publish_driver_picks(player_id, race_id, picks):
     else:
         key = f'picks-{player_id}-{race_id}'
         picking_player = player_id
+    
+    pick_time = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     payload = {
         'player': picking_player,
         'race': race_id,
         'picks': picks.search_select_multiple,
-        'type': 'picks'
+        'type': 'picks',
+        'pick_time': pick_time
     }
     dapr_client.save_state(STATE_STORE, key, value=json.dumps(payload), state_metadata={
         'contentType': 'application/json'
@@ -269,6 +280,8 @@ def get_driver_points(race_id):
     race_picks = get_driver_picks(race_id)
     full_schedule = get_full_race_schedule_model()
     current_race = get_full_race_schedule_model(id=race_id)
+    weekend_feed = get_weekend_feed(race_id)
+    playoff_race = weekend_feed.weekend_race[0].playoff_round
     points_race_begin = False
     previous_race_picks = PlayerPicks(root=[])
     if current_race.event_name == 'Race':
@@ -285,15 +298,18 @@ def get_driver_points(race_id):
                     race_type = previous_points_race.event_name
                 previous_race_picks = get_driver_picks(
                     previous_points_race.race_id)
-
     results = get_driver_position(race_id)
+    race_started = False
+    for flag in results.flags:
+        if flag.FlagState == 1:
+            race_started = True
     all_driver_stage_points = get_driver_stage_points(race_id)
     players_points = []
     for player_picks in race_picks:
         # player_picks_dict = player_picks.json()
         player_name=get_player(player_id=player_picks.player).name
         player_points = calculate_points(
-            results, player_name, player_picks, all_driver_stage_points, previous_race_picks)
+            results, player_name, player_picks, all_driver_stage_points, previous_race_picks, playoff_race)
         players_points.append(player_points)
     players_points = sorted(
         players_points, key=lambda x: getattr(x, 'total_points'), reverse=True)
@@ -309,18 +325,21 @@ def get_driver_points(race_id):
         0,
         0
     ]
-    if results.laps or results.flags:
+    if race_started:
         last_pick_1 = 0
         last_pick_2 = 0
         last_pick_3 = 0
         first = True
+        
         for player_points in players_points:
             if position_scores < 3 or points_position < 3:
                 position_scores += 1
                 if (last_pick_1 != player_points.pick_1 or last_pick_2 != player_points.pick_2 or last_pick_3 != player_points.pick_3) and not first:
                     points_position += 1
                 first = False
-                player_points.total_playoff_points += points_dict[points_position]
+
+                if not playoff_race:
+                    player_points.total_playoff_points += points_dict[points_position]
 
                 last_pick_1 = player_points.pick_1
                 last_pick_2 = player_points.pick_2
@@ -331,7 +350,7 @@ def get_driver_points(race_id):
 ##
 ## TODO: This function is way too big. It should be broken up
 ##
-def calculate_points(results: LapTimes, player_name: str, player_picks: PicksItem, all_driver_stage_points: StagePoints, previous_race_picks: PlayerPicks) -> DriverPoints:
+def calculate_points(results: LapTimes, player_name: str, player_picks: PicksItem, all_driver_stage_points: StagePoints, previous_race_picks: PlayerPicks, playoff_race: bool) -> DriverPoints:
     repeated_picks = []
     for previous_pick in previous_race_picks:
         if previous_pick.player == player_picks.player:
@@ -372,7 +391,7 @@ def calculate_points(results: LapTimes, player_name: str, player_picks: PicksIte
                                 stage_points += (11 - driver_position.position)
                                 picks_data[index].stage_points += (11 - driver_position.position)
                             break
-    return DriverPoints(name=player_name, picks=picks_data)
+    return DriverPoints(name=player_name, pick_time=player_picks.pick_time, playoff_race=playoff_race, picks=picks_data)
 
 def publish_user(form):
     key = f'player-{form.name.replace(" ", "-").lower()}-{form.phone_number}'

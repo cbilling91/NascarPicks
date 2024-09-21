@@ -13,7 +13,8 @@ from app.dependencies.nascar import (
     check_admin_user, 
     get_player_interface, 
     get_driver_picks, 
-    get_full_race_schedule_model, 
+    get_full_race_schedule_model,
+    race_started,
     get_driver_position,
     get_driver_points, 
     get_players, 
@@ -67,11 +68,8 @@ def form_content(race_id: str, player: Player = Depends(get_player_interface)):
         return player
     current_picks = get_driver_picks(race_id, player.id)
     current_race = get_full_race_schedule_model(int(race_id))
+    started = race_started(race_id)
     print(current_picks)
-
-    #utc_racetime = datetime.fromisoformat(current_race.start_time_utc)
-    # Get the current UTC time
-    current_utc_time = datetime.now(UTC)
 
     components = [
         c.Link(
@@ -81,10 +79,11 @@ def form_content(race_id: str, player: Player = Depends(get_player_interface)):
         ),
         c.Heading(text=f"Hello, {player.name.split()[0]}", level=1),
         c.Heading(
-            text=f"{current_race.track_name} - {current_race.race_name}", level=3)
+            text=f"{current_race.track_name} - {current_race.race_name}", level=3),
+        c.Heading(text=current_race.start_time, level=5)
     ]
 
-    if current_utc_time <= current_race.start_time_utc or player.admin:
+    if not started or player.admin:
 
         class CurrentRaceDrivers(BaseModel):
 
@@ -156,6 +155,7 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
         ),
         c.Heading(
             text=f"{current_race.track_name} - {current_race.race_name}", level=1),
+        c.Heading(text=current_race.start_time, level=5),
         c.Heading(text='Picks', level=2),
     ]
     if driver_points:
@@ -182,7 +182,8 @@ def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
                     DisplayLookup(field='pick_3_stage_points'),
                     DisplayLookup(field='pick_3_stage_wins'),
                     DisplayLookup(field='pick_3_position_points'),
-                    DisplayLookup(field='penalty')
+                    DisplayLookup(field='penalty'),
+                    DisplayLookup(field='pick_time', mode=DisplayMode.date)
                 ]
             )
         ]
