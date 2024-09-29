@@ -8,7 +8,8 @@
             "appPort": 8000,
             // "httpPort": 53109,
             // "grpcPort": 53317,
-            "metricsPort": 9091
+            "metricsPort": 9091,
+            "componentsPath": "./components"
         },
         {
             "label": "daprd-down-python",

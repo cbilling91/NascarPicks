@@ -400,7 +400,8 @@ class DriverPoints(BaseModel):
     pick_3_total_points: int = 0
     pick_3_playoff_points: int = 0
     penalty: bool = False
-    pick_time: Optional[datetime] = ""
+    pick_time: Optional[str] = ""
+    pick_time_utc: Optional[datetime] = ""
     playoff_race: Optional[int] = 0
 
     @root_validator(pre=True)
@@ -435,13 +436,14 @@ class DriverPoints(BaseModel):
             values['stage_points'] = stage_points
             values['position_points'] = position_points
             values['total_points'] = position_points + stage_points
-            if not values['playoff_race']:
-                values['total_playoff_points'] = total_playoff_points
+            #if not values['playoff_race']:
+            values['total_playoff_points'] = total_playoff_points
             if repeated_picks > 1:
                 values['penalty'] = True
             else:
                 values['penalty'] = False
             values['picks'] = []
+
             if 'pick_time' in values:
                 if not values['pick_time']:
                     del values['pick_time']
@@ -451,16 +453,18 @@ class DriverPoints(BaseModel):
                     if pick_time_utc.tzinfo is None:
                         utc_zone = pytz.utc
                         pick_time_utc = utc_zone.localize(pick_time_utc)
+
                     else:
+                        
                         pick_time_utc = pick_time_utc.astimezone(pytz.utc)
                     
-                        # Convert to Eastern Daylight Time (EDT)
-                        edt_zone = pytz.timezone('America/New_York')
-                        edt_timestamp = pick_time_utc.astimezone(edt_zone)
+                    # Convert to Eastern Daylight Time (EDT)
+                    edt_zone = pytz.timezone('America/New_York')
+                    edt_timestamp = pick_time_utc.astimezone(edt_zone)
                         
-                        # Set both UTC and EDT timestamps in the values dictionary
-                        values['pick_time_utc'] = pick_time_utc
-                        values['pick_time'] = edt_timestamp.strftime("%Y-%m-%d %I:%M:00 %p")
+                    # Set both UTC and EDT timestamps in the values dictionary
+                    values['pick_time_utc'] = pick_time_utc
+                    values['pick_time'] = edt_timestamp.strftime("%Y-%m-%d %I:%M:00 %p")
                     
         return values
 

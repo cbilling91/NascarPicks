@@ -338,8 +338,8 @@ def get_driver_points(race_id):
                     points_position += 1
                 first = False
 
-                if not playoff_race:
-                    player_points.total_playoff_points += points_dict[points_position]
+                #if not playoff_race:
+                player_points.total_playoff_points += points_dict[points_position]
 
                 last_pick_1 = player_points.pick_1
                 last_pick_2 = player_points.pick_2

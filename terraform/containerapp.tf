@@ -16,54 +16,36 @@ resource "azurerm_container_app_environment" "nascar_aca_environment" {
   #internal_load_balancer_enabled = true
 }
 
-# resource "azurerm_container_app_environment_dapr_component" "output" {
-#   name                         = "nascar-db"
-#   container_app_environment_id = azurerm_container_app_environment.nascar_aca_environment.id
-#   component_type               = "state.azure.cosmosdb"
-#   version                      = "v1"
-#   scopes = azurerm_container_app.nascar_aca.dapr[*].app_id
-
-#   secret {
-#     name = azurerm_cosmosdb_account.nascar_db_account.name
-#     value = azurerm_cosmosdb_account.nascar_db_account.primary_key
-#   }
-  
-#   metadata {
-#     name  = "url"
-#     value = azurerm_cosmosdb_account.nascar_db_account.endpoint
-#   }
-
-#   metadata {
-#     name  = "masterKey"
-#     secret_name = azurerm_cosmosdb_account.nascar_db_account.name
-#   }
-
-#   metadata {
-#     name  = "database"
-#     value = azurerm_cosmosdb_sql_database.nascar_db.name
-#   }
-
-#   metadata {
-#     name  = "collection"
-#     value = azurerm_cosmosdb_sql_container.nascar_db_collection.name
-#   }
-# }
-
-resource "azurerm_container_app_environment_dapr_component" "cockroach_db" {
-  name                         = "nascar-cockroach-statestore"
+resource "azurerm_container_app_environment_dapr_component" "output" {
+  name                         = "nascar-db"
   container_app_environment_id = azurerm_container_app_environment.nascar_aca_environment.id
-  component_type               = "state.cockroachdb"
+  component_type               = "state.azure.cosmosdb"
   version                      = "v1"
   scopes = azurerm_container_app.nascar_aca.dapr[*].app_id
 
   secret {
-    name = "cockroach-db-connection-string"
-    value = var.cockroach_db_connection_string
+    name = azurerm_cosmosdb_account.nascar_db_account.name
+    value = azurerm_cosmosdb_account.nascar_db_account.primary_key
+  }
+  
+  metadata {
+    name  = "url"
+    value = azurerm_cosmosdb_account.nascar_db_account.endpoint
   }
 
   metadata {
-    name  = "connectionString"
-    secret_name = "cockroach-db-connection-string"
+    name  = "masterKey"
+    secret_name = azurerm_cosmosdb_account.nascar_db_account.name
+  }
+
+  metadata {
+    name  = "database"
+    value = azurerm_cosmosdb_sql_database.nascar_db.name
+  }
+
+  metadata {
+    name  = "collection"
+    value = azurerm_cosmosdb_sql_container.nascar_db_collection.name
   }
 }
 
@@ -76,7 +58,7 @@ resource "azurerm_container_app" "nascar_aca" {
   template {
     container {
       name   = "helloworld-app"
-      image  = "ghcr.io/cbilling91/nascar-picks/front-end:fd0c8b67"
+      image  = "ghcr.io/cbilling91/nascar-picks/front-end:1240838a"
       cpu    = 0.25
       memory = "0.5Gi"
     }
@@ -96,10 +78,10 @@ resource "azurerm_container_app" "nascar_aca" {
     }
   }
 
-  # secret {
-  #   name = azurerm_cosmosdb_account.nascar_db_account.name
-  #   value = azurerm_cosmosdb_account.nascar_db_account.primary_key
-  # }
+  secret {
+    name = azurerm_cosmosdb_account.nascar_db_account.name
+    value = azurerm_cosmosdb_account.nascar_db_account.primary_key
+  }
 
   dapr {
     app_id = "nascarpicks"
