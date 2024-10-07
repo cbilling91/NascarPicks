@@ -1,6 +1,6 @@
-azure-cosmos==4.7.0
 twilio==9.0.5
 pydantic==2.5.3
+psycopg2==2.9.9
 fastapi==0.108.0
 dapr==1.12.1
 cachetools==5.3.2
