@@ -6,9 +6,11 @@ WORKDIR /app
 
 # Copy the requirements file
 COPY requirements_notifications.txt .
+COPY copy_root_cert.py .
 
 # Install the Python dependencies
-RUN pip install --no-cache-dir -r requirements_notifications.txt
+RUN pip install --no-cache-dir -r requirements_notifications.txt && \
+    python3 copy_root_cert.py
 
 # Copy the FastAPI application code into the container
 COPY app /app
