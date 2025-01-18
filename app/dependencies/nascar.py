@@ -17,6 +17,8 @@ from app.models.nascar import ScheduleItem, Driver, DriverPoints, WeekendFeed, P
 dapr_client = DaprClient()
 STATE_STORE = 'nascar-cockroach-statestore'
 
+# Get the current year for NASCAR data
+current_year = datetime.now().year
 
 def cache_with_ttl(ttl_seconds):
     cache = TTLCache(maxsize=100, ttl=ttl_seconds)
@@ -67,7 +69,7 @@ def load_json_10sec(url):
 @cache_with_ttl(ttl_seconds=86400)
 def get_full_schedule():
     # Get the NASCAR schedule feed
-    schedule_url = "https://cf.nascar.com/cacher/2024/1/schedule-feed.json"
+    schedule_url = f"https://cf.nascar.com/cacher/{current_year}/1/schedule-feed.json"
     schedule_response = requests.get(schedule_url)
     schedule_data = schedule_response.json()
     return schedule_data
@@ -78,16 +80,21 @@ def get_full_race_schedule_model(id=None, one_week_in_future_only=None):
     current_date = datetime.now()
     full_schedule_sorted = sorted(
         full_schedule, key=lambda x: x['start_time_utc'])
-    filtered_schedule = {
-        item['race_id']: ScheduleItem(**item) for item in full_schedule_sorted if (
-            'Race' in item['event_name']
-            and
-            (id == None or item['race_id'] == id)
-            and
-            (not one_week_in_future_only or datetime.strptime(
-                item["start_time_utc"], "%Y-%m-%dT%H:%M:%S") < current_date + timedelta(days=7))
-        )
-    }
+    # Find the first race event
+    first_race = next((item for item in full_schedule_sorted if 'Race' in item['event_name']), None)
+    
+    filtered_schedule = {}
+    if first_race:
+        filtered_schedule[first_race['race_id']] = ScheduleItem(**first_race)
+    
+    # Add other races within the time window
+    for item in full_schedule_sorted:
+        if (item['race_id'] != first_race['race_id'] and  # Skip the first race since we already added it
+            'Race' in item['event_name'] and
+            (id == None or item['race_id'] == id) and
+            (not one_week_in_future_only or 
+             datetime.strptime(item["start_time_utc"], "%Y-%m-%dT%H:%M:%S") < current_date + timedelta(days=6))):
+            filtered_schedule[item['race_id']] = ScheduleItem(**item)
     filtered_schedule = list(filtered_schedule.values())
     if id:
         return filtered_schedule[0]
@@ -117,7 +124,7 @@ def get_current_weekend_schedule():
 def get_weekend_feed(race_id):
     # Get the weekend feed for the specified race
     weekend_feed_response = load_json(
-        f"https://cf.nascar.com/cacher/2024/1/{race_id}/weekend-feed.json")
+        f"https://cf.nascar.com/cacher/{current_year}/1/{race_id}/weekend-feed.json")
     weekend_feed_model = WeekendFeed(**weekend_feed_response)
     adding_position = []
     position = 1
@@ -148,12 +155,12 @@ def get_results(race_id):
 def get_driver_position(race_id) -> LapTimes:
     try:
         positions = load_json_10sec(
-            f"https://cf.nascar.com/cacher/2024/1/{race_id}/lap-times.json")
+            f"https://cf.nascar.com/cacher/{current_year}/1/{race_id}/lap-times.json")
         positions_model = LapTimes(**positions)
         return positions_model
     except:
         return LapTimes(laps=[], flags=[])
-    
+
 
 def race_started(race_id):
     laps_and_flags = get_driver_position(race_id=race_id)
@@ -161,12 +168,12 @@ def race_started(race_id):
         if flag.FlagState == 1:
             return True
     return False
-        
+
 
 def get_driver_stage_points(race_id) -> StagePoints:
     try:
         stage_points = load_json_10sec(
-            f"https://cf.nascar.com/cacher/2024/1/{race_id}/live-stage-points.json")
+            f"https://cf.nascar.com/cacher/{current_year}/1/{race_id}/live-stage-points.json")
         stage_points_model = StagePoints(stage_points)
         return stage_points_model
     except:
@@ -229,7 +236,7 @@ def publish_driver_picks(player_id, race_id, picks):
     else:
         key = f'picks-{player_id}-{race_id}'
         picking_player = player_id
-    
+
     pick_time = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     payload = {
         'player': picking_player,
@@ -271,6 +278,7 @@ def get_driver_picks(race_id, player_id=None) -> PlayerPicks:
                         'picks' else value for key, value in item.json().items()} for item in race_picks.results]
     race_picks_model = PlayerPicks(race_picks_list)
     return race_picks_model
+
 
 ##
 ## TODO: Looping through full lists repeatedly is bad!
@@ -330,7 +338,7 @@ def get_driver_points(race_id):
         last_pick_2 = 0
         last_pick_3 = 0
         first = True
-        
+
         for player_points in players_points:
             if position_scores < 3 or points_position < 3:
                 position_scores += 1
@@ -344,8 +352,9 @@ def get_driver_points(race_id):
                 last_pick_1 = player_points.pick_1
                 last_pick_2 = player_points.pick_2
                 last_pick_3 = player_points.pick_3
-            
+
     return players_points
+
 
 ##
 ## TODO: This function is way too big. It should be broken up
@@ -392,6 +401,7 @@ def calculate_points(results: LapTimes, player_name: str, player_picks: PicksIte
                                 picks_data[index].stage_points += (11 - driver_position.position)
                             break
     return DriverPoints(name=player_name, pick_time=player_picks.pick_time, playoff_race=playoff_race, picks=picks_data)
+
 
 def publish_user(form):
     key = f'player-{form.name.replace(" ", "-").lower()}-{form.phone_number}'
