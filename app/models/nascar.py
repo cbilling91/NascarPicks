@@ -46,6 +46,7 @@ class Player(BaseModel):
     text_notifications: Optional[bool] = None
     type: str
     admin: bool
+    delete: str = "Delete"
 
 
 class Players(RootModel):
@@ -79,8 +80,7 @@ class ScheduleItem(BaseModel):
     series_id: int
     run_type: int
     start_time_utc: datetime
-    start_time: str
-    end_time_utc: date
+    end_time_utc: datetime
     picks: str = "Make Picks"
     race: str = "Race"
 

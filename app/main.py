@@ -1,7 +1,7 @@
 from typing import Annotated
 from datetime import datetime, UTC
 
-from fastapi import FastAPI, Depends, Response
+from fastapi import FastAPI, Depends, Response, HTTPException
 from fastapi.responses import HTMLResponse
 from fastui.forms import SelectSearchResponse, fastui_form
 from fastui import FastUI, AnyComponent, prebuilt_html, components as c
@@ -20,7 +20,8 @@ from app.dependencies.nascar import (
     get_players, 
     get_all_cup_drivers_pick_options, 
     publish_driver_picks, 
-    publish_user
+    publish_user,
+    delete_player
 )
 from app.models.nascar import DriverSelectForm, UserForm, Player
 
@@ -249,7 +250,8 @@ def user_form(player: str = Depends(check_admin_user), edit_player_id: str = Non
                             url='/?player_id={hash}')),
                         DisplayLookup(field='phone_number'),
                         DisplayLookup(field='text_notifications'),
-                        DisplayLookup(field='admin')
+                        DisplayLookup(field='admin'),
+                        DisplayLookup(field='delete', on_click=GoToEvent(url='/users/delete/{id}/'))
                     ]
                 ),
                 c.Heading(text='User Form', level=2),
@@ -285,6 +287,62 @@ def manage_users(form: Annotated[UserForm, fastui_form(UserForm)], player: Playe
 @app.get("/api/user_created/", response_model=FastUI, response_model_exclude_none=True)
 def user_created(player: Player = Depends(get_player_interface)):
     return [c.FireEvent(event=GoToEvent(url=f'/users/'))]
+
+
+@app.get("/api/users/delete/{user_id}/", response_model=FastUI, response_model_exclude_none=True)
+def delete_user_confirm(user_id: str, admin: Player = Depends(check_admin_user)):
+    """Show delete confirmation page."""
+    players = get_players()
+    user_to_delete = next((player for player in players if player.id == user_id), None)
+    if not user_to_delete:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    return [
+        c.Page(
+            components=[
+                c.Heading(text='Delete User', level=1),
+                c.Text(text=f'Are you sure you want to delete user "{user_to_delete.name}"?'),
+                c.Button(
+                    text='Delete',
+                    on_click=GoToEvent(url=f'/users/delete_confirmed/{user_id}/'),
+                    class_name='btn btn-danger me-2'
+                ),
+                c.Button(
+                    text='Cancel',
+                    on_click=GoToEvent(url='/users/'),
+                    class_name='btn btn-secondary'
+                ),
+            ]
+        )
+    ]
+
+
+@app.get("/api/users/delete_confirmed/{user_id}/", response_model=FastUI, response_model_exclude_none=True)
+def delete_user_confirmed(user_id: str, admin: Player = Depends(check_admin_user)):
+    """Actually delete the user after confirmation."""
+    if delete_player(user_id):
+        return [c.FireEvent(event=GoToEvent(url='/users/'))]
+    else:
+        return [
+            c.Page(
+                components=[
+                    c.Text(text='Failed to delete user', class_name='text-danger'),
+                    c.Button(
+                        text='Back to Users',
+                        on_click=GoToEvent(url='/users/'),
+                        class_name='btn btn-primary'
+                    )
+                ]
+            )
+        ]
+
+@app.delete("/api/users/{user_id}/", response_model=FastUI, response_model_exclude_none=True)
+def delete_user(user_id: str, admin: Player = Depends(check_admin_user)):
+    """Delete a user. Only admins can delete users."""
+    if delete_player(user_id):
+        return [c.FireEvent(event=GoToEvent(url='/users/'))]
+    else:
+        raise HTTPException(status_code=500, detail="Failed to delete user")
 
 
 @app.get('/{path:path}')

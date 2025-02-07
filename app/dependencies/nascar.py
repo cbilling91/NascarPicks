@@ -57,12 +57,16 @@ def generate_pydantic_class(fields: Generator[tuple, None, None]) -> Type[BaseMo
 @cache_with_ttl(ttl_seconds=3600)
 def load_json(url):
     json_response = requests.get(url)
+    if json_response.status_code != 200:
+        return None
     return json_response.json()
 
 
 @cache_with_ttl(ttl_seconds=10)
 def load_json_10sec(url):
     json_response = requests.get(url)
+    if json_response.status_code != 200:
+        return None
     return json_response.json()
 
 
@@ -75,29 +79,29 @@ def get_full_schedule():
     return schedule_data
 
 
-def get_full_race_schedule_model(id=None, one_week_in_future_only=None):
+def get_full_race_schedule_model(id=None, one_week_in_future_only=None, text_notifications_only=None):
     full_schedule = get_full_schedule()
     current_date = datetime.now()
     full_schedule_sorted = sorted(
         full_schedule, key=lambda x: x['start_time_utc'])
     # Find the first race event
-    first_race = next((item for item in full_schedule_sorted if 'Race' in item['event_name']), None)
+    first_race = next((item for item in full_schedule_sorted if 'Race' in item['event_name'] and not 'Heat' in item['event_name']), None)
     
     filtered_schedule = {}
-    if first_race:
+    if first_race and not text_notifications_only:
         filtered_schedule[first_race['race_id']] = ScheduleItem(**first_race)
     
     # Add other races within the time window
     for item in full_schedule_sorted:
+        if item['race_id'] == id:
+            return ScheduleItem(**item)
         if (item['race_id'] != first_race['race_id'] and  # Skip the first race since we already added it
-            'Race' in item['event_name'] and
-            (id == None or item['race_id'] == id) and
+            'Race' in item['event_name'] and not 'Heat' in item['event_name'] and
             (not one_week_in_future_only or 
-             datetime.strptime(item["start_time_utc"], "%Y-%m-%dT%H:%M:%S") < current_date + timedelta(days=6))):
+             (datetime.strptime(item["start_time_utc"], "%Y-%m-%dT%H:%M:%S") < current_date + timedelta(days=5) and 
+              (not text_notifications_only or datetime.strptime(item["start_time_utc"], "%Y-%m-%dT%H:%M:%S") >= current_date)))):
             filtered_schedule[item['race_id']] = ScheduleItem(**item)
     filtered_schedule = list(filtered_schedule.values())
-    if id:
-        return filtered_schedule[0]
     return filtered_schedule
 
 
@@ -122,18 +126,26 @@ def get_current_weekend_schedule():
 
 
 def get_weekend_feed(race_id):
-    # Get the weekend feed for the specified race
-    weekend_feed_response = load_json(
-        f"https://cf.nascar.com/cacher/{current_year}/1/{race_id}/weekend-feed.json")
-    weekend_feed_model = WeekendFeed(**weekend_feed_response)
-    adding_position = []
-    position = 1
-    for result in weekend_feed_model.weekend_race[0].results:
-        result.position = position
-        adding_position.append(result)
-        position += 1
-    weekend_feed_model.weekend_race[0].results = adding_position
-    return weekend_feed_model
+    try:
+        weekend_feed_response = load_json(
+            f"https://cf.nascar.com/cacher/{current_year}/1/{race_id}/weekend-feed.json")
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 403:
+            print(f"Access denied for race ID {race_id}. The race information may not be available yet.")
+            return WeekendFeed(weekend_race=[], weekend_runs=[])
+        raise  # Re-raise other HTTP errors
+
+    try:
+        weekend_feed_model = WeekendFeed(**weekend_feed_response)
+        
+        if weekend_feed_model.weekend_race:
+            for position, result in enumerate(weekend_feed_model.weekend_race[0].results, start=1):
+                result.position = position
+        
+        return weekend_feed_model
+    except (ValueError, TypeError, KeyError):
+        # Return empty model if the response is invalid
+        return WeekendFeed(weekend_race=[], weekend_runs=[])
 
 
 def get_qualified_drivers(race_id):
@@ -171,13 +183,11 @@ def race_started(race_id):
 
 
 def get_driver_stage_points(race_id) -> StagePoints:
-    try:
-        stage_points = load_json_10sec(
-            f"https://cf.nascar.com/cacher/{current_year}/1/{race_id}/live-stage-points.json")
-        stage_points_model = StagePoints(stage_points)
-        return stage_points_model
-    except:
+    stage_points = load_json_10sec(
+        f"https://cf.nascar.com/cacher/{current_year}/1/{race_id}/live-stage-points.json")
+    if stage_points is None:
         return StagePoints(root=[])
+    return StagePoints(root=stage_points)
 
 
 def get_race_drivers_search_model(race_id) -> SelectSearchResponse:
@@ -289,7 +299,9 @@ def get_driver_points(race_id):
     full_schedule = get_full_race_schedule_model()
     current_race = get_full_race_schedule_model(id=race_id)
     weekend_feed = get_weekend_feed(race_id)
-    playoff_race = weekend_feed.weekend_race[0].playoff_round
+    playoff_race = False  # Default to False
+    if weekend_feed.weekend_race and len(weekend_feed.weekend_race) > 0:
+        playoff_race = weekend_feed.weekend_race[0].playoff_round
     points_race_begin = False
     previous_race_picks = PlayerPicks(root=[])
     if current_race.event_name == 'Race':
@@ -486,6 +498,20 @@ def get_players(id: str = None):
         store_name=STATE_STORE, query=json.dumps(player_query)
     )
     return [Player(**item.json()) for item in players.results]
+
+
+def delete_player(player_id: str):
+    """Delete a player from the state store."""
+    try:
+        # Delete the player from the state store
+        delete_response = dapr_client.delete_state(
+            store_name=STATE_STORE,
+            key=player_id
+        )
+        return True
+    except Exception as e:
+        print(f"Error deleting player: {e}")
+        return False
 
 
 if __name__ == "__main__":
