@@ -54,29 +54,20 @@ def generate_pydantic_class(fields: Generator[tuple, None, None]) -> Type[BaseMo
     return type("GeneratedPydanticClass", (BaseModel,), class_dict)
 
 
-@cache_with_ttl(ttl_seconds=3600)
-def load_json(url):
-    json_response = requests.get(url)
-    if json_response.status_code != 200:
-        return None
-    return json_response.json()
-
-
-@cache_with_ttl(ttl_seconds=10)
-def load_json_10sec(url):
-    json_response = requests.get(url)
-    if json_response.status_code != 200:
-        return None
-    return json_response.json()
+def load_json_with_ttl(url, ttl_seconds):
+    @cache_with_ttl(ttl_seconds=ttl_seconds)
+    def fetch_json():
+        json_response = requests.get(url)
+        if json_response.status_code != 200:
+            return None
+        return json_response.json()
+    return fetch_json()
 
 
 @cache_with_ttl(ttl_seconds=86400)
 def get_full_schedule():
-    # Get the NASCAR schedule feed
     schedule_url = f"https://cf.nascar.com/cacher/{current_year}/1/schedule-feed.json"
-    schedule_response = requests.get(schedule_url)
-    schedule_data = schedule_response.json()
-    return schedule_data
+    return load_json_with_ttl(schedule_url, 86400)
 
 
 def get_full_race_schedule_model(id=None, one_week_in_future_only=None, text_notifications_only=None):
@@ -127,8 +118,8 @@ def get_current_weekend_schedule():
 
 def get_weekend_feed(race_id):
     try:
-        weekend_feed_response = load_json(
-            f"https://cf.nascar.com/cacher/{current_year}/1/{race_id}/weekend-feed.json")
+        weekend_feed_response = load_json_with_ttl(
+            f"https://cf.nascar.com/cacher/{current_year}/1/{race_id}/weekend-feed.json", 3600)
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 403:
             print(f"Access denied for race ID {race_id}. The race information may not be available yet.")
@@ -166,8 +157,8 @@ def get_results(race_id):
 
 def get_driver_position(race_id) -> LapTimes:
     try:
-        positions = load_json_10sec(
-            f"https://cf.nascar.com/cacher/{current_year}/1/{race_id}/lap-times.json")
+        positions = load_json_with_ttl(
+            f"https://cf.nascar.com/cacher/{current_year}/1/{race_id}/lap-times.json", 10)
         positions_model = LapTimes(**positions)
         return positions_model
     except:
@@ -183,8 +174,8 @@ def race_started(race_id):
 
 
 def get_driver_stage_points(race_id) -> StagePoints:
-    stage_points = load_json_10sec(
-        f"https://cf.nascar.com/cacher/{current_year}/1/{race_id}/live-stage-points.json")
+    stage_points = load_json_with_ttl(
+        f"https://cf.nascar.com/cacher/{current_year}/1/{race_id}/live-stage-points.json", 10)
     if stage_points is None:
         return StagePoints(root=[])
     return StagePoints(root=stage_points)
@@ -204,7 +195,7 @@ def get_race_drivers_search_model(race_id) -> SelectSearchResponse:
 
 
 def get_drivers(series=None, id=None, query=None) -> list[Driver]:
-    drivers = load_json("https://cf.nascar.com/cacher/drivers.json")
+    drivers = load_json_with_ttl("https://cf.nascar.com/cacher/drivers.json", 3600)
     #  or item['Driver_Series'] == series
     drivers_models = [Driver(**item) for item in drivers['response'] if (series == None or True) and (
         id == None or item['Nascar_Driver_ID'] == int(id)) and item['Crew_Chief'] and (not query or query.lower() in item['Full_Name'].lower())]
@@ -293,126 +284,124 @@ def get_driver_picks(race_id, player_id=None) -> PlayerPicks:
 ##
 ## TODO: Looping through full lists repeatedly is bad!
 ##
-def get_driver_points(race_id):
-
-    race_picks = get_driver_picks(race_id)
-    full_schedule = get_full_race_schedule_model()
-    current_race = get_full_race_schedule_model(id=race_id)
-    weekend_feed = get_weekend_feed(race_id)
-    playoff_race = False  # Default to False
+def is_playoff_race(weekend_feed):
     if weekend_feed.weekend_race and len(weekend_feed.weekend_race) > 0:
-        playoff_race = weekend_feed.weekend_race[0].playoff_round
-    points_race_begin = False
-    previous_race_picks = PlayerPicks(root=[])
-    if current_race.event_name == 'Race':
-        for race_index in range(len(full_schedule)):
-            if full_schedule[race_index].race_name == "DAYTONA 500":
-                points_race_begin = True
-                continue
-            if full_schedule[race_index].race_id == race_id and race_index > 0 and points_race_begin:
-                race_type = ""
-                index_lookback = 0
-                while race_type != 'Race':
-                    index_lookback += 1
-                    previous_points_race = full_schedule[race_index-index_lookback]
-                    race_type = previous_points_race.event_name
-                previous_race_picks = get_driver_picks(
-                    previous_points_race.race_id)
-    results = get_driver_position(race_id)
-    race_started = False
+        return weekend_feed.weekend_race[0].playoff_round
+    return False
+
+
+def has_race_started(results):
     for flag in results.flags:
         if flag.FlagState == 1:
-            race_started = True
-    all_driver_stage_points = get_driver_stage_points(race_id)
-    players_points = []
-    for player_picks in race_picks:
-        # player_picks_dict = player_picks.json()
-        player_name=get_player(player_id=player_picks.player).name
-        player_points = calculate_points(
-            results, player_name, player_picks, all_driver_stage_points, previous_race_picks, playoff_race)
-        players_points.append(player_points)
-    players_points = sorted(
-        players_points, key=lambda x: getattr(x, 'total_points'), reverse=True)
-    # Iterate over player points and assign playoff points to the top 3 total points scores
-    points_position = 0
-    position_scores = 0
-    skip_next = False
-    points_dict = [
-        10,
-        5,
-        3,
-        0,
-        0,
-        0
-    ]
-    if race_started:
-        last_pick_1 = 0
-        last_pick_2 = 0
-        last_pick_3 = 0
-        first = True
-
-        for player_points in players_points:
-            if position_scores < 3 or points_position < 3:
-                position_scores += 1
-                if (last_pick_1 != player_points.pick_1 or last_pick_2 != player_points.pick_2 or last_pick_3 != player_points.pick_3) and not first:
-                    points_position += 1
-                first = False
-
-                #if not playoff_race:
-                player_points.total_playoff_points += points_dict[points_position]
-
-                last_pick_1 = player_points.pick_1
-                last_pick_2 = player_points.pick_2
-                last_pick_3 = player_points.pick_3
-
-    return players_points
+            return True
+    return False
 
 
-##
-## TODO: This function is way too big. It should be broken up
-##
-def calculate_points(results: LapTimes, player_name: str, player_picks: PicksItem, all_driver_stage_points: StagePoints, previous_race_picks: PlayerPicks, playoff_race: bool) -> DriverPoints:
-    repeated_picks = []
-    for previous_pick in previous_race_picks:
-        if previous_pick.player == player_picks.player:
-            repeated_picks = [
-                previous
-                for previous in previous_pick.picks
-                for current in player_picks.picks
-                if previous.model_dump() == current.model_dump()
-            ]
-    points = 0
+def assign_playoff_points(players_points, points_dict):
+    last_pick_1 = last_pick_2 = last_pick_3 = 0
+    first = True
+    points_position = position_scores = 0
+
+    for player_points in players_points:
+        if position_scores < 3 or points_position < 3:
+            position_scores += 1
+            if (last_pick_1 != player_points.pick_1 or last_pick_2 != player_points.pick_2 or last_pick_3 != player_points.pick_3) and not first:
+                points_position += 1
+            first = False
+
+            player_points.total_playoff_points += points_dict[points_position]
+
+            last_pick_1 = player_points.pick_1
+            last_pick_2 = player_points.pick_2
+            last_pick_3 = player_points.pick_3
+
+
+def calculate_position_points(results, pick):
+    position_points = 40
+    reduction = 5
+    for result in results.laps:
+        if pick.Nascar_Driver_ID == result.NASCARDriverID:
+            return position_points
+        position_points -= reduction
+        if position_points < 1:
+            position_points = 1
+        reduction = 1
+    return position_points
+
+
+def calculate_stage_points(all_driver_stage_points, pick):
     stage_points = 0
+    if all_driver_stage_points.root:
+        for stage in all_driver_stage_points:
+            for driver_position in stage.results:
+                if pick.Nascar_Driver_ID == driver_position.driver_id:
+                    if driver_position.position == 1:
+                        pick.stage_wins += 1
+                    if driver_position.position <= 10:
+                        stage_points += (11 - driver_position.position)
+                        pick.stage_points += (11 - driver_position.position)
+                    break
+    return stage_points
+
+
+def calculate_points(results: LapTimes, player_name: str, player_picks: PicksItem, all_driver_stage_points: StagePoints, previous_race_picks: PlayerPicks, playoff_race: bool) -> DriverPoints:
+    repeated_picks = [
+        previous
+        for previous_pick in previous_race_picks
+        if previous_pick.player == player_picks.player
+        for previous in previous_pick.picks
+        for current in player_picks.picks
+        if previous.model_dump() == current.model_dump()
+    ]
+
+    points = 0
     picks_data = [PickPoints(), PickPoints(), PickPoints()]
+
     if results.laps or results.flags:
         for index, pick in enumerate(player_picks.picks):
             if pick in repeated_picks:
                 picks_data[index].repeated_pick = True
             picks_data[index].name = pick.Full_Name
-            position_points = 40
-            reduction = 5
-            for result in results.laps:
-                if pick.Nascar_Driver_ID == result.NASCARDriverID:
-                    points += position_points
-                    picks_data[index].position_points = position_points
-                    break
-                position_points -= reduction
-                if position_points < 1:
-                    position_points = 1
-                reduction = 1
-            picks_data[index].stage_points = 0
-            if all_driver_stage_points.root:
-                for stage in all_driver_stage_points:
-                    for driver_position in stage.results:
-                        if pick.Nascar_Driver_ID == driver_position.driver_id:
-                            points += driver_position.stage_points
-                            if driver_position.position == 1:
-                                picks_data[index].stage_wins += 1
-                            if driver_position.position <= 10:
-                                stage_points += (11 - driver_position.position)
-                                picks_data[index].stage_points += (11 - driver_position.position)
-                            break
+            picks_data[index].position_points = calculate_position_points(results, pick)
+            points += picks_data[index].position_points
+            picks_data[index].stage_points = calculate_stage_points(all_driver_stage_points, picks_data[index])
+            points += picks_data[index].stage_points
+
     return DriverPoints(name=player_name, pick_time=player_picks.pick_time, playoff_race=playoff_race, picks=picks_data)
+
+
+def get_driver_points(race_id):
+    race_picks = get_driver_picks(race_id)
+    full_schedule = get_full_race_schedule_model()
+    current_race = get_full_race_schedule_model(id=race_id)
+    weekend_feed = get_weekend_feed(race_id)
+    playoff_race = is_playoff_race(weekend_feed)
+
+    previous_race_picks = PlayerPicks(root=[])
+    if current_race.event_name == 'Race':
+        points_race_begin = False
+        for race_index in range(len(full_schedule)):
+            if full_schedule[race_index].race_name == "DAYTONA 500":
+                points_race_begin = True
+                continue
+            if full_schedule[race_index].race_id == race_id and race_index > 0 and points_race_begin:
+                previous_race_picks = get_driver_picks(full_schedule[race_index-1].race_id)
+
+    results = get_driver_position(race_id)
+    race_started = has_race_started(results)
+    all_driver_stage_points = get_driver_stage_points(race_id)
+
+    players_points = [
+        calculate_points(results, get_player(player_id=player_picks.player).name, player_picks, all_driver_stage_points, previous_race_picks, playoff_race)
+        for player_picks in race_picks
+    ]
+
+    players_points.sort(key=lambda x: getattr(x, 'total_points'), reverse=True)
+
+    if race_started:
+        assign_playoff_points(players_points, [10, 5, 3, 0, 0, 0])
+
+    return players_points
 
 
 def publish_user(form):
