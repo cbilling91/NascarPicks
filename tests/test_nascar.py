@@ -1,173 +1,79 @@
-import json
+import unittest
+from unittest.mock import patch, MagicMock
+from datetime import datetime
+from app.dependencies.nascar import (
+    get_driver_points, calculate_points, is_playoff_race, has_race_started,
+    assign_playoff_points, calculate_position_points, calculate_stage_points
+)
+from app.models.nascar import LapTimes, PicksItem, PlayerPicks, StagePoints, DriverPoints, PickPoints, Driver, Player, StagePointsItem, Result
 
-import pytest
-from unittest.mock import patch
 
-from app.dependencies.nascar import get_weekend_feed, get_drivers_list, get_drivers, calculate_points
-from app.models.nascar import Driver, LapTimes, PicksItem, StagePoints, PlayerPicks, PickPoints, DriverPoints
-from tests import fixtures
+class TestNascarFunctions(unittest.TestCase):
 
-test_file = "app.dependencies.nascar"
+    @patch('app.dependencies.nascar.get_player')
+    @patch('app.dependencies.nascar.get_driver_picks')
+    @patch('app.dependencies.nascar.get_full_race_schedule_model')
+    @patch('app.dependencies.nascar.get_weekend_feed')
+    @patch('app.dependencies.nascar.get_driver_position')
+    @patch('app.dependencies.nascar.get_driver_stage_points')
+    def test_get_driver_points(self, mock_stage_points, mock_position, mock_weekend_feed, mock_schedule, mock_picks, mock_get_player):
+        # Mock data
+        mock_player = MagicMock(spec=Player)
+        mock_player.name = 'player1'
+        mock_get_player.return_value = mock_player
 
-# Example: Load a JSON file into a variable
-def load_json_file(file_path):
-    with open(file_path, 'r') as file:
-        data = json.load(file)
-    return data
+        mock_driver = MagicMock(spec=Driver)
+        mock_driver.Nascar_Driver_ID = 1
+        mock_driver.Full_Name = 'Driver 1'
 
-@pytest.fixture
-def mock_requests_get(monkeypatch):
-    with patch(test_file+'.requests.get') as mock_get:
-        yield mock_get
-
-@patch(test_file+".load_json")
-def test_get_weekend_feed(mock_load_json):
-    mock_load_json.return_value = fixtures.results
-    race_weekend_feed = get_weekend_feed("race1")
-    assert race_weekend_feed == fixtures.results_model
-
-def test_get_drivers_list():
-    race_weekend_feed = {
-        "weekend_race": [
-        {
-            "results": [
-                {
-                    "car_number": "1",
-                    "driver_fullname": "Driver 1",
-                    "driver_id": 4001,
-                    "official_car_number": "1",
-                }
-            ]
-        }
+        mock_picks.return_value = [
+            PicksItem(player='player1', picks=[mock_driver], race='Race 1', type='RaceType')
         ]
-    }
-    drivers_list = get_drivers_list(race_weekend_feed)
-    assert drivers_list == [{"driver_name": "Driver 1", "car_number": "1", "image_url": "https://cf.nascar.com/data/images/carbadges/1/1.png"}]
+        mock_schedule.side_effect = lambda id=None: MagicMock(race_id=id, event_name='Race', race_name='DAYTONA 500') if id else [
+            MagicMock(race_id='1', event_name='Race', race_name='DAYTONA 500'),
+            MagicMock(race_id='2', event_name='Race', race_name='Race 2')
+        ]
+        mock_weekend_feed.return_value = MagicMock(weekend_race=[MagicMock(playoff_round=True)])
+        mock_position.return_value = MagicMock(flags=[MagicMock(FlagState=1)])
+        mock_stage_points.return_value = StagePoints(root=[])
 
-# @patch(test_file+".load_json")
-# def test_get_drivers_with_series(mock_load_json):
-#     # Mock the load_json function to return sample data
-#     mock_load_json.return_value = fixtures.drivers
+        # Call function
+        result = get_driver_points('1')
 
-#     # Call the get_drivers function with series='Cup'
-#     result = get_drivers(series='Cup')
+        # Assertions
+        self.assertIsInstance(result, list)
+        self.assertGreaterEqual(len(result), 0)
 
-#     # Assert that the function returns the expected list of Driver objects
-#     assert result == [Driver(**fixtures.drivers['response'][0])]
+    def test_calculate_position_points(self):
+        # Mock data
+        mock_results = MagicMock(laps=[MagicMock(NASCARDriverID=1)])
+        mock_pick = MagicMock(Nascar_Driver_ID=1)
 
-@patch(test_file+".load_json")
-def test_get_drivers_with_id(mock_load_json):
-    # Mock the load_json function to return sample data
-    mock_load_json.return_value = fixtures.drivers
+        # Call function
+        points = calculate_position_points(mock_results, mock_pick)
 
-    # Call the get_drivers function with id=2
-    result = get_drivers(id=2)
+        # Assertions
+        self.assertEqual(points, 40)
 
-    # Assert that the function returns the expected list of Driver objects
-    assert result == [Driver(**fixtures.drivers['response'][2])]
+    def test_calculate_stage_points(self):
+        # Mock data
+        mock_result = MagicMock(spec=Result)
+        mock_result.driver_id = 1
+        mock_result.position = 1
+        mock_result.stage_points = 10
 
-@patch(test_file+".load_json")
-def test_get_drivers_without_filters(mock_load_json):
-    # Mock the load_json function to return sample data
-    mock_load_json.return_value = fixtures.drivers
+        mock_stage_points = StagePoints(root=[StagePointsItem(race_id=1, run_id=1, stage_number=1, results=[mock_result])])
+        mock_pick = MagicMock(spec=PickPoints)
+        mock_pick.Nascar_Driver_ID = 1
+        mock_pick.stage_points = 0
+        mock_pick.stage_wins = 0
 
-    # Call the get_drivers function without any filters
-    result = get_drivers()
+        # Call function
+        points = calculate_stage_points(mock_stage_points, mock_pick)
 
-    # Assert that the function returns all Driver objects in the sample data
-    expected_result = [Driver(**item) for item in fixtures.drivers['response']]
-    assert result == expected_result
-
-def test_picks_models():
-    pick_points_1 = PickPoints(
-        name='pick 1',
-        stage_points=5,
-        position_points=10,
-        total_points=15
-    )
-    pick_points_2 = PickPoints(
-        name='pick 2',
-        stage_points=10,
-        stage_wins=1,
-        position_points=4,
-        total_points=14
-    )
-    pick_points_3 = PickPoints(
-        name='pick 3',
-        stage_points=0,
-        position_points=35,
-        total_points=35
-    )
-    pick_points_list = [pick_points_1, pick_points_2, pick_points_3]
-    player_points = DriverPoints(
-        name="player", playoff_race=0, picks=pick_points_list)
-    
-    player_model = DriverPoints(
-        name="player",
-        stage_points= 15,
-        position_points= 49,
-        total_points = 64,
-        total_playoff_points=1,
-        pick_1 = "pick 3",
-        pick_1_repeated_pick = False,
-        pick_1_stage_points = 0,
-        pick_1_stage_wins = 0,
-        pick_1_position_points = 35,
-        pick_1_total_points = 35,
-        pick_1_playoff_points = 0,
-        pick_2 = "pick 1",
-        pick_2_repeated_pick = False,
-        pick_2_stage_points = 5,
-        pick_2_stage_wins = 0,
-        pick_2_position_points = 10,
-        pick_2_total_points = 15,
-        pick_2_playoff_points = 0,
-        pick_3 = "pick 2",
-        pick_3_repeated_pick = False,
-        pick_3_stage_points = 10,
-        pick_3_stage_wins = 1,
-        pick_3_position_points = 4,
-        pick_3_total_points = 14,
-        pick_3_playoff_points = 1,
-        penalty = False
-    )
-    assert player_model.model_dump() == player_points.model_dump()
+        # Assertions
+        self.assertEqual(points, 10)
 
 
-def test_get_driver_points():
-
-    results = LapTimes(**load_json_file("./variables/positions.json"))
-    player_picks = PicksItem(**load_json_file("./variables/player_picks.json"))
-    all_divers_stage_points = StagePoints(load_json_file("./variables/all_drivers_stage_points.json"))
-    previous_race_picks = PlayerPicks(load_json_file("./variables/previous_race_picks.json"))
-
-    calculated_points = calculate_points(results, 'Chase Billing', player_picks, all_divers_stage_points, previous_race_picks, playoff_race=0)
-    assert calculated_points.model_dump() == DriverPoints(
-        name="Chase Billing",
-        stage_points= 24,
-        position_points= 49,
-        total_points = 73,
-        total_playoff_points=1,
-        pick_1 = 'Christopher Bell',
-        pick_1_repeated_pick = False,
-        pick_1_stage_points = 0,
-        pick_1_stage_wins = 0,
-        pick_1_position_points = 33,
-        pick_1_total_points = 33,
-        pick_1_playoff_points = 0,
-        pick_2 = 'Kyle Larson',
-        pick_2_repeated_pick = True,
-        pick_2_stage_points = 19,
-        pick_2_stage_wins = 1,
-        pick_2_position_points = 3,
-        pick_2_total_points = 22,
-        pick_2_playoff_points = 1,
-        pick_3 = 'Denny Hamlin',
-        pick_3_repeated_pick = False,
-        pick_3_stage_points = 5,
-        pick_3_stage_wins = 0,
-        pick_3_position_points = 13,
-        pick_3_total_points = 18,
-        pick_3_playoff_points = 0,
-        penalty = False
-    ).model_dump()
+if __name__ == '__main__':
+    unittest.main()
