@@ -41,7 +41,7 @@ resource "azurerm_container_app" "nascar_aca" {
   template {
     container {
       name   = "helloworld-app"
-      image  = "ghcr.io/cbilling91/nascar-picks/front-end:e13e4d33"
+      image  = "ghcr.io/cbilling91/nascar-picks/front-end:047689b4"
       cpu    = 0.25
       memory = "0.5Gi"
     }
@@ -77,7 +77,7 @@ resource "azurerm_container_app_job" "nascar_aca_notifications" {
   template {
     container {
       name   = "nascar-notifications"
-      image  = "ghcr.io/cbilling91/nascar-picks/notifications:5ff90ed6"
+      image  = "ghcr.io/cbilling91/nascar-picks/notifications:047689b4"
       cpu    = 0.25
       memory = "0.5Gi"
 

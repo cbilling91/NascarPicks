@@ -7,10 +7,10 @@ import hashlib
 import base64
 
 from pydantic import BaseModel, Field
-from fastapi import Cookie, Response, HTTPException, Depends
 from dapr.clients import DaprClient
 from fastui.forms import SelectSearchResponse
 from cachetools import TTLCache
+import streamlit as st
 
 from app.models.nascar import ScheduleItem, Driver, DriverPoints, WeekendFeed, Player, LapTimes, StagePoints, PlayerPicks, PicksItem, PickPoints
 
@@ -430,22 +430,22 @@ def publish_user(form):
     return
 
 
-def get_player_interface(response: Response, player_id: str = None, player_id_cookie=Cookie(None)):
+def get_player_interface(player_id: str = None):
     if player_id:
-        response.set_cookie(key="player_id_cookie",
-                            value=player_id, max_age=259200, httponly=True)
-    elif player_id_cookie:
-        player_id = player_id_cookie
+        st.session_state['player_id'] = player_id
+    elif 'player_id' in st.session_state:
+        player_id = st.session_state['player_id']
     else:
-        raise HTTPException(status_code=401, detail="Cannot identify you.")
+        raise ValueError("Cannot identify you.")
     return get_player(player_hash=player_id)
 
 
-def check_admin_user(admin: Player = Depends(get_player_interface)):
+def check_admin_user():
+    admin = get_player_interface()
     if admin.admin:
         return admin
     else:
-        raise HTTPException(status_code=401, detail="Only admins can do this.")
+        raise ValueError("Only admins can do this.")
 
 
 @cache_with_ttl(ttl_seconds=60)
@@ -459,8 +459,7 @@ def get_player(player_hash=None, player_id=None):
         player = dapr_client.query_state(
             store_name=STATE_STORE, query=json.dumps(player_query))
         if len(player.results) == 0:
-            raise HTTPException(
-                status_code=401, detail="Your user is not found in the database.")
+            raise ValueError("Your user is not found in the database.")
         player = player.results[0]
     else:
         player = dapr_client.get_state(store_name=STATE_STORE, key=player_id)

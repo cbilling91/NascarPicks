@@ -1,13 +1,8 @@
-from typing import Annotated
+import streamlit as st
 from datetime import datetime, UTC
-
-from fastapi import FastAPI, Depends, Response, HTTPException
-from fastapi.responses import HTMLResponse
-from fastui.forms import SelectSearchResponse, fastui_form
-from fastui import FastUI, AnyComponent, prebuilt_html, components as c
-from fastui.components.display import DisplayMode, DisplayLookup
-from fastui.events import GoToEvent, BackEvent
+from typing import Annotated
 from pydantic import BaseModel, Field
+from fastapi import Response
 
 from app.dependencies.nascar import (
     check_admin_user, 
@@ -25,327 +20,131 @@ from app.dependencies.nascar import (
 )
 from app.models.nascar import DriverSelectForm, UserForm, Player
 
-app = FastAPI()
+st.set_page_config(page_title="NASCAR Picks", layout="wide")
 
-@app.get("/api/", response_model=FastUI, response_model_exclude_none=True)
-async def get_schedule(player: Player = Depends(get_player_interface)) -> list[AnyComponent]:
-    """Get NASCAR Schedule"""
+def get_schedule():
+    query_params = st.experimental_get_query_params()
+    player_id = query_params.get('player_id', [None])[0]  # Get player_id from query params
+    player = get_player_interface(player_id)
     schedule = get_full_race_schedule_model(one_week_in_future_only=True)
-    return [
-        c.Page(
-            components=[
-                c.LinkList(
-                    links=[
-                        c.Link(
-                            components=[c.Text(text='Manage Users')],
-                            on_click=GoToEvent(url='/users/'),
-                        )
-                    ],
-                ),
-                c.Heading(text=f"Hello, {player.name.split()[0]}", level=1),
-                c.Heading(text='Schedule', level=2),
-                c.Table(
-                    data=schedule,
-                    columns=[
-                        DisplayLookup(field='track_name'),
-                        DisplayLookup(field='race_name'),
-                        # the second is the date of birth, rendered as a date
-                        DisplayLookup(field='start_time',
-                                      mode=DisplayMode.date),
-                        DisplayLookup(field='picks', on_click=GoToEvent(
-                            url='/picks/{race_id}/')),
-                        DisplayLookup(field='race', on_click=GoToEvent(
-                            url='/races/{race_id}/')),
-                    ],
-                ),
-            ]
-        ),
-    ]
+    return player, schedule
 
+def display_schedule():
+    player, schedule = get_schedule()
+    st.title(f"Welcome {player.name}")
+    st.header("Upcoming Races")
+    
+    # Create a list to hold table data
+    table_data = []
+    
+    for event in schedule:
+        table_data.append({
+            "Track": event.track_name,
+            "Race": event.race_name,
+            "Make Picks": st.button("Make Picks", key=f"make_picks_{event.race_id}"),
+            "Race": st.button("Race", key=f"race_{event.race_id}")
+        })
+    
+    # Display the table
+    df = st.dataframe(table_data)
+    
+    # # Create columns for buttons
+    # col1, col2, col3, col4 = st.columns(4)
+    
+    # for i, event in enumerate(schedule):
+    #     with col1:
+    #         st.write(event.track_name)
+    #     with col2:
+    #         st.write(event.race_name)
+    #     with col3:
+    #         if st.button("Make Picks", key=f"make_picks_{event.race_id}"):
+    #             form_content(event.race_id)
+    #     with col4:
+    #         if st.button("Race", key=f"race_{event.race_id}"):
+    #             pass  # Add functionality for the "Race" button
 
-@app.get("/api/picks/{race_id}/", response_model=FastUI, response_model_exclude_none=True)
-def form_content(race_id: str, player: Player = Depends(get_player_interface)):
-    if type(player) == Response:
-        return player
+def form_content(race_id):
+    query_params = st.experimental_get_query_params()
+    player_id = query_params.get('player_id', [None])[0]  # Get player_id from query params
+    player = get_player_interface(player_id)
     current_picks = get_driver_picks(race_id, player.id)
     current_race = get_full_race_schedule_model(int(race_id))
     started = race_started(race_id)
-    print(current_picks)
-
-    components = [
-        c.Link(
-            components=[c.Text(text='Back to Schedule')],
-
-            on_click=GoToEvent(url='/'),
-        ),
-        c.Heading(text=f"Hello, {player.name.split()[0]}", level=1),
-        c.Heading(
-            text=f"{current_race.track_name} - {current_race.race_name}", level=3),
-        c.Heading(text=current_race.start_time, level=5)
-    ]
 
     if not started or player.admin:
-
         class CurrentRaceDrivers(BaseModel):
-
             if player.admin:
-                player_select: str = Field(title="Player", default=player.id, description="Leave blank to pick as you", json_schema_extra={
-                    'search_url': f'/api/users/json'
-                }
-                )
-            search_select_multiple: list[str] = Field(title="Select 3 Drivers", description="drivers desc", json_schema_extra={
-                'search_url': f'/api/races/{race_id}/drivers/'
-            }
-            )
+                player_select: str = Field(title="Player", default=player.id, description="Leave blank to pick as you")
+            search_select_multiple: list[str] = Field(title="Select 3 Drivers", description="drivers desc")
+
         if current_picks.root:
-            components += [
-                c.Table(
-                    data=current_picks.root[0].picks,
-                    columns=[
-                        DisplayLookup(field='Full_Name'),
-                        DisplayLookup(field='Badge'),
-                        DisplayLookup(field='Team')
-                    ],
-                )
-            ]
+            st.write("Current Picks:")
+            st.write(current_picks.root[0].picks)
         else:
-            components += [
-                c.Heading(text='Make Your Picks', level=3)
-            ]
-        components += [c.ModelForm(model=CurrentRaceDrivers,
-                                   submit_url=f'/api/picks/{race_id}/')]
+            st.write("Make Your Picks")
+
+        form = CurrentRaceDrivers()
+        st.form(key="my_form")
+        st.write("Player:")
+        player_select = st.selectbox("Player", [player.id])
+        st.write("Select 3 Drivers:")
+        search_select_multiple = st.multiselect("Select 3 Drivers", get_all_cup_drivers_pick_options(""))
+        submit_button = st.form_submit_button(label="Submit")
+
+        if submit_button:
+            publish_driver_picks(player.id, race_id, DriverSelectForm(search_select_multiple=search_select_multiple))
 
     else:
+        st.write("Race has already started. No more picks can be made.")
 
-        components += c.Paragraph(
-            text='Race has already started. No more picks can be made.'),
-
-    return [
-        c.Page(
-            components=components
-        )
-    ]
-
-
-@app.post('/api/picks/{race_id}/', response_model=FastUI, response_model_exclude_none=True)
-async def select_form_post(race_id: str, form: Annotated[DriverSelectForm, fastui_form(DriverSelectForm)], player: Player = Depends(get_player_interface)):
-    publish_driver_picks(player.id, race_id, form)
-    return [c.FireEvent(event=GoToEvent(url=f'/thanks/{race_id}/'), message="Thank you for your picks!!")]
-
-
-@app.get("/api/thanks/{race_id}/", response_model=FastUI, response_model_exclude_none=True)
-def thanks(race_id: str, player: Player = Depends(get_player_interface)):
-    return [c.FireEvent(event=GoToEvent(url=f'/picks/{race_id}/', message="Thank you for your picks!!"))]
-
-
-@app.get("/api/races/{race_id}/", response_model=FastUI, response_model_exclude_none=True)
-def user_profile(race_id: int, player: Player = Depends(get_player_interface)):
-    """
-    User profile page, the frontend will fetch this when the user visits `/user/{id}/`.
-    """
-    # results = get_results(race_id)
-    results = get_driver_position(race_id)
-    driver_points = get_driver_points(race_id)
-    current_race = get_full_race_schedule_model(race_id)
-
-    components = []
-    components += [
-        c.Link(
-            components=[c.Text(text='Back to Schedule')],
-            on_click=GoToEvent(url='/'),
-        ),
-        c.Heading(
-            text=f"{current_race.track_name} - {current_race.race_name}", level=1),
-        c.Heading(text=current_race.start_time, level=5),
-        c.Heading(text='Picks', level=2),
-    ]
-    if driver_points:
-        components += [
-            c.Table(
-                data=driver_points,
-                columns=[
-                    DisplayLookup(field='name'),
-                    DisplayLookup(field='stage_points'),
-                    DisplayLookup(field='total_points'),
-                    DisplayLookup(field='total_playoff_points'),
-                    DisplayLookup(field='pick_1'),
-                    DisplayLookup(field='pick_1_repeated_pick'),
-                    DisplayLookup(field='pick_1_stage_points'),
-                    DisplayLookup(field='pick_1_stage_wins'),
-                    DisplayLookup(field='pick_1_position_points'),
-                    DisplayLookup(field='pick_2'),
-                    DisplayLookup(field='pick_2_repeated_pick'),
-                    DisplayLookup(field='pick_2_stage_points'),
-                    DisplayLookup(field='pick_2_stage_wins'),
-                    DisplayLookup(field='pick_2_position_points'),
-                    DisplayLookup(field='pick_3'),
-                    DisplayLookup(field='pick_3_repeated_pick'),
-                    DisplayLookup(field='pick_3_stage_points'),
-                    DisplayLookup(field='pick_3_stage_wins'),
-                    DisplayLookup(field='pick_3_position_points'),
-                    DisplayLookup(field='penalty'),
-                    DisplayLookup(field='pick_time', mode=DisplayMode.date)
-                ]
-            )
-        ]
-    else:
-        components += [
-            c.Text(text="No picks made yet.")
-        ]
-
-    components += [c.Heading(text='Race', level=2)]
-
-    if results.laps:
-        components += [
-
-            c.Table(
-                data=results.laps,
-                columns=[
-                    DisplayLookup(field='RunningPos'),
-                    DisplayLookup(field='FullName')
-                ],
-            )
-        ]
-    else:
-        components += [
-            c.Text(text="Race has not started.")
-        ]
-
-    return [
-        c.Page(
-            components=components
-        )
-    ]
-
-
-@app.get("/api/races/{race_id}/drivers/", response_model=SelectSearchResponse)
-def user_profile(q: str, race_id: int, player: Player = Depends(get_player_interface)) -> SelectSearchResponse:
-    """
-    User profile page, the frontend will fetch this when the user visits `/user/{id}/`.
-    """
-    return get_all_cup_drivers_pick_options(q)
-
-
-@app.get("/api/users/", response_model=FastUI, response_model_exclude_none=True)
-def user_form(player: str = Depends(check_admin_user), edit_player_id: str = None):
+def user_profile():
     players = get_players()
-    edit_player = None
-    if edit_player_id:
-        for player in players:
-            if edit_player_id == player.id:
-                edit_player = player.dict()
-    return [
-        c.Page(
-            components=[
-                c.Link(
-                    components=[c.Text(text='Back to Schedule')],
-                    on_click=GoToEvent(url='/'),
-                ),
-                c.Heading(text='Users', level=1),
-                c.Table(
-                    data=players,
-                    columns=[
-                        DisplayLookup(field='edit', on_click=GoToEvent(url='/users/edit/?edit_player_id={id}')),
-                        DisplayLookup(field='name', on_click=GoToEvent(
-                            url='/?player_id={hash}')),
-                        DisplayLookup(field='phone_number'),
-                        DisplayLookup(field='text_notifications'),
-                        DisplayLookup(field='admin'),
-                        DisplayLookup(field='delete', on_click=GoToEvent(url='/users/delete/{id}/'))
-                    ]
-                ),
-                c.Heading(text='User Form', level=2),
-                c.ModelForm(model=UserForm, initial=edit_player, submit_url='/api/users/create/'),
-            ]
-        )
-    ]
+    st.title("Users")
+    st.write(players)
 
-@app.get("/api/users/edit/", response_model=FastUI, response_model_exclude_none=True)
-def user_created(edit_player_id: str, player: Player = Depends(get_player_interface)):
-    return [c.FireEvent(event=GoToEvent(url=f'/users/?edit_player_id={edit_player_id}'))]
-
-@app.get("/api/users/json", response_model=SelectSearchResponse)
-def user_form(player: str = Depends(check_admin_user), format: str = None):
+def user_form():
     players = get_players()
-    player_json = [{'value': player.id, 'label': player.name}
-                   for player in players]
-    all_player_options = [
-        {
-            'label': 'Players',
-            'options': player_json
-        }
-    ]
-    return SelectSearchResponse(options=all_player_options)
+    st.title("User Form")
+    form = UserForm()
+    st.write("Name:")
+    name = st.text_input("Name")
+    st.write("Phone Number:")
+    phone_number = st.text_input("Phone Number")
+    st.write("Text Notifications:")
+    text_notifications = st.checkbox("Text Notifications")
+    st.write("Admin:")
+    admin = st.checkbox("Admin")
+    submit_button = st.button("Submit")
 
+    if submit_button:
+        publish_user(UserForm(name=name, phone_number=phone_number, text_notifications=text_notifications, admin=admin))
 
-@app.post("/api/users/create/", response_model=FastUI, response_model_exclude_none=True)
-def manage_users(form: Annotated[UserForm, fastui_form(UserForm)], player: Player = Depends(get_player_interface)):
-    publish_user(form)
-    return [c.FireEvent(event=GoToEvent(url='/user_created/'))]
-
-
-@app.get("/api/user_created/", response_model=FastUI, response_model_exclude_none=True)
-def user_created(player: Player = Depends(get_player_interface)):
-    return [c.FireEvent(event=GoToEvent(url=f'/users/'))]
-
-
-@app.get("/api/users/delete/{user_id}/", response_model=FastUI, response_model_exclude_none=True)
-def delete_user_confirm(user_id: str, admin: Player = Depends(check_admin_user)):
-    """Show delete confirmation page."""
+def delete_user_confirm(user_id):
     players = get_players()
     user_to_delete = next((player for player in players if player.id == user_id), None)
     if not user_to_delete:
-        raise HTTPException(status_code=404, detail="User not found")
-        
-    return [
-        c.Page(
-            components=[
-                c.Heading(text='Delete User', level=1),
-                c.Text(text=f'Are you sure you want to delete user "{user_to_delete.name}"?'),
-                c.Button(
-                    text='Delete',
-                    on_click=GoToEvent(url=f'/users/delete_confirmed/{user_id}/'),
-                    class_name='btn btn-danger me-2'
-                ),
-                c.Button(
-                    text='Cancel',
-                    on_click=GoToEvent(url='/users/'),
-                    class_name='btn btn-secondary'
-                ),
-            ]
-        )
-    ]
-
-
-@app.get("/api/users/delete_confirmed/{user_id}/", response_model=FastUI, response_model_exclude_none=True)
-def delete_user_confirmed(user_id: str, admin: Player = Depends(check_admin_user)):
-    """Actually delete the user after confirmation."""
-    if delete_player(user_id):
-        return [c.FireEvent(event=GoToEvent(url='/users/'))]
+        st.write("User not found")
     else:
-        return [
-            c.Page(
-                components=[
-                    c.Text(text='Failed to delete user', class_name='text-danger'),
-                    c.Button(
-                        text='Back to Users',
-                        on_click=GoToEvent(url='/users/'),
-                        class_name='btn btn-primary'
-                    )
-                ]
-            )
-        ]
+        st.write(f"Are you sure you want to delete user '{user_to_delete.name}'?")
+        delete_button = st.button("Delete")
+        if delete_button:
+            delete_player(user_id)
+            st.write("User deleted")
 
-@app.delete("/api/users/{user_id}/", response_model=FastUI, response_model_exclude_none=True)
-def delete_user(user_id: str, admin: Player = Depends(check_admin_user)):
-    """Delete a user. Only admins can delete users."""
-    if delete_player(user_id):
-        return [c.FireEvent(event=GoToEvent(url='/users/'))]
-    else:
-        raise HTTPException(status_code=500, detail="Failed to delete user")
+def main():
+    display_schedule()
+    st.write("Select a page:")
+    page = st.selectbox("Page", ["Schedule", "Picks", "Users", "User Form", "Delete User"])
+    if page == "Picks":
+        race_id = st.text_input("Enter race ID")
+        form_content(race_id)
+    elif page == "Users":
+        user_profile()
+    elif page == "User Form":
+        user_form()
+    elif page == "Delete User":
+        user_id = st.text_input("Enter user ID")
+        delete_user_confirm(user_id)
 
-
-@app.get('/{path:path}')
-async def html_landing(player: Player = Depends(get_player_interface)) -> HTMLResponse:
-    """Simple HTML page which serves the React app, comes last as it matches all paths."""
-    return HTMLResponse(prebuilt_html(title='FastUI Demo'))
+if __name__ == "__main__":
+    main()

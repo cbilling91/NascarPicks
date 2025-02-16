@@ -5,17 +5,19 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "FastAPI with Dapr",
+            "name": "Streamlit Debug",
             "type": "python",
             "request": "launch",
-            "module": "uvicorn",
+            "module": "streamlit",
             "args": [
-                "app.main:app",
-                "--reload"
+                "run",
+                "app/main.py",
+                "--server.runOnSave",
+                "true"
             ],
             "console": "integratedTerminal",
             "preLaunchTask": "daprd-debug-python",
             "postDebugTask": "daprd-down-python"
-          }
+        }
     ]
 }
