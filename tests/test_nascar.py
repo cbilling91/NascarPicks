@@ -72,7 +72,7 @@ class TestNascarFunctions(unittest.TestCase):
         points = calculate_stage_points(mock_stage_points, mock_pick)
 
         # Assertions
-        self.assertEqual(points, 10)
+        self.assertEqual(points, (10, 1))
 
 
 if __name__ == '__main__':
