@@ -86,25 +86,28 @@ class ScheduleItem(BaseModel):
 
     @root_validator(pre=True)
     def convert_to_edt(cls, values):
-        start_time_utc = values.get('start_time_utc')
-        
-        start_time_utc = datetime.strptime(values.get('start_time_utc'), "%Y-%m-%dT%H:%M:%S")
-        
-        # Ensure the timestamp is in UTC
-        if start_time_utc.tzinfo is None:
-            utc_zone = pytz.utc
-            start_time_utc = utc_zone.localize(start_time_utc)
-        else:
-            start_time_utc = start_time_utc.astimezone(pytz.utc)
-        
-        # Convert to Eastern Daylight Time (EDT)
-        edt_zone = pytz.timezone('America/New_York')
-        edt_timestamp = start_time_utc.astimezone(edt_zone)
-        
-        # Set both UTC and EDT timestamps in the values dictionary
-        values['start_time_utc'] = start_time_utc
-        values['start_time'] = edt_timestamp.strftime("%Y-%m-%d %I:%M:00 %p")
-        
+        start_time_utc_str = values.get('start_time_utc')
+
+        if start_time_utc_str:
+            # Handle the case where we get a string with timezone info
+            if isinstance(start_time_utc_str, str):
+                if '+00:00' in start_time_utc_str:
+                    start_time_utc_str = start_time_utc_str.replace('+00:00', '')
+                start_time_utc = datetime.fromisoformat(start_time_utc_str)
+                if not start_time_utc.tzinfo:
+                    start_time_utc = pytz.utc.localize(start_time_utc)
+            else:
+                # If it's already a datetime, ensure it has UTC timezone
+                start_time_utc = pytz.utc.localize(start_time_utc_str) if not start_time_utc_str.tzinfo else start_time_utc_str
+
+            # Convert to America/New_York timezone
+            ny_tz = pytz.timezone('America/New_York')
+            start_time_ny = start_time_utc.astimezone(ny_tz)
+
+            # Format the times
+            values['start_time_utc'] = start_time_utc
+            values['start_time'] = start_time_ny.strftime("%Y-%m-%d %I:%M:%S %p")
+
         return values
 
 

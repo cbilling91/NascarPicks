@@ -76,7 +76,7 @@ def get_full_race_schedule_model(id=None, one_week_in_future_only=None, text_not
     full_schedule_sorted = sorted(
         full_schedule, key=lambda x: x['start_time_utc'])
     # Find the first race event
-    first_race = next((item for item in full_schedule_sorted if 'Race' in item['event_name'] and not 'Heat' in item['event_name']), None)
+    first_race = next((item for item in full_schedule_sorted if item['event_name'] == 'Race' or 'Duel' in item['race_name']), None)
     
     filtered_schedule = {}
     if first_race and not text_notifications_only:
@@ -84,10 +84,10 @@ def get_full_race_schedule_model(id=None, one_week_in_future_only=None, text_not
     
     # Add other races within the time window
     for item in full_schedule_sorted:
-        if item['race_id'] == id:
+        if item['race_id'] == id and (item['event_name'] == 'Race' or 'Duel' in item['event_name']):
             return ScheduleItem(**item)
         if (item['race_id'] != first_race['race_id'] and  # Skip the first race since we already added it
-            'Race' in item['event_name'] and not 'Heat' in item['event_name'] and
+            (item['event_name'] == 'Race' or 'Duel' in item['event_name']) and
             (not one_week_in_future_only or 
              (datetime.strptime(item["start_time_utc"], "%Y-%m-%dT%H:%M:%S") < current_date + timedelta(days=5) and 
               (not text_notifications_only or datetime.strptime(item["start_time_utc"], "%Y-%m-%dT%H:%M:%S") >= current_date)))):
@@ -275,9 +275,15 @@ def get_driver_picks(race_id, player_id=None) -> PlayerPicks:
     race_picks = dapr_client.query_state(
         store_name=STATE_STORE, query=json.dumps(query)
     )
-    race_picks_list = [{key: [get_drivers(id=pick)[0] for pick in value] if key ==
-                        'picks' else value for key, value in item.json().items()} for item in race_picks.results]
-    race_picks_model = PlayerPicks(race_picks_list)
+    drivers_dict = {str(driver.Nascar_Driver_ID): driver for driver in get_drivers()}
+    race_picks_list = [
+        {
+            key: [drivers_dict.get(pick_id, None) for pick_id in value] if key == 'picks' else value
+            for key, value in item.json().items()
+        }
+        for item in race_picks.results
+    ]
+    race_picks_model = PlayerPicks(root=race_picks_list)
     return race_picks_model
 
 
@@ -331,17 +337,17 @@ def calculate_position_points(results, pick):
 
 def calculate_stage_points(all_driver_stage_points, pick):
     stage_points = 0
+    stage_wins = 0
     if all_driver_stage_points.root:
         for stage in all_driver_stage_points:
             for driver_position in stage.results:
                 if pick.Nascar_Driver_ID == driver_position.driver_id:
                     if driver_position.position == 1:
-                        pick.stage_wins += 1
+                        stage_wins += 1
                     if driver_position.position <= 10:
                         stage_points += (11 - driver_position.position)
-                        pick.stage_points += (11 - driver_position.position)
-                    break
-    return stage_points
+                        break
+    return stage_points, stage_wins
 
 
 def calculate_points(results: LapTimes, player_name: str, player_picks: PicksItem, all_driver_stage_points: StagePoints, previous_race_picks: PlayerPicks, playoff_race: bool) -> DriverPoints:
@@ -364,7 +370,8 @@ def calculate_points(results: LapTimes, player_name: str, player_picks: PicksIte
             picks_data[index].name = pick.Full_Name
             picks_data[index].position_points = calculate_position_points(results, pick)
             points += picks_data[index].position_points
-            picks_data[index].stage_points = calculate_stage_points(all_driver_stage_points, picks_data[index])
+            stage_points, stage_wins = calculate_stage_points(all_driver_stage_points, pick)
+            picks_data[index].stage_points, picks_data[index].stage_wins = stage_points, stage_wins
             points += picks_data[index].stage_points
 
     return DriverPoints(name=player_name, pick_time=player_picks.pick_time, playoff_race=playoff_race, picks=picks_data)
@@ -399,7 +406,7 @@ def get_driver_points(race_id):
     players_points.sort(key=lambda x: getattr(x, 'total_points'), reverse=True)
 
     if race_started:
-        assign_playoff_points(players_points, [10, 5, 3, 0, 0, 0])
+        assign_playoff_points(players_points, [7, 5, 3, 0, 0, 0])
 
     return players_points
 
