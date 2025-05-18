@@ -76,7 +76,7 @@ def get_full_race_schedule_model(id=None, one_week_in_future_only=None, text_not
     full_schedule_sorted = sorted(
         full_schedule, key=lambda x: x['start_time_utc'])
     # Find the first race event
-    first_race = next((item for item in full_schedule_sorted if item['event_name'] == 'Race' or 'Duel' in item['race_name']), None)
+    first_race = next((item for item in full_schedule_sorted if item['event_name'] == 'Race' or item['event_name'] == 'Race (ALL-STAR)' or 'Duel' in item['race_name']), None)
     
     filtered_schedule = {}
     if first_race and not text_notifications_only:
@@ -84,10 +84,10 @@ def get_full_race_schedule_model(id=None, one_week_in_future_only=None, text_not
     
     # Add other races within the time window
     for item in full_schedule_sorted:
-        if item['race_id'] == id and (item['event_name'] == 'Race' or 'Duel' in item['event_name']):
+        if item['race_id'] == id and (item['event_name'] == 'Race' or item['event_name'] == 'Race (ALL-STAR)' or 'Duel' in item['event_name']):
             return ScheduleItem(**item)
         if (item['race_id'] != first_race['race_id'] and  # Skip the first race since we already added it
-            (item['event_name'] == 'Race' or 'Duel' in item['event_name']) and
+            (item['event_name'] == 'Race' or item['event_name'] == 'Race (ALL-STAR)' or 'Duel' in item['event_name']) and
             (not one_week_in_future_only or 
              (datetime.strptime(item["start_time_utc"], "%Y-%m-%dT%H:%M:%S") < current_date + timedelta(days=5) and 
               (not text_notifications_only or datetime.strptime(item["start_time_utc"], "%Y-%m-%dT%H:%M:%S") >= current_date)))):
