@@ -22,6 +22,11 @@ override.tf.json
 .terraformrc
 terraform.rc
 
+# Local env files and tfvars contain secrets
+.env
+*.tfvars
+!*.tfvars.example
+
 # Python virtual environment
 .venv
 

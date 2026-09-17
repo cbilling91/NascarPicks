@@ -1,0 +1,7 @@
+# Copy this file to terraform.tfvars (same directory) and fill in real values.
+# terraform.tfvars is gitignored — do NOT commit real secrets.
+# Terraform auto-loads terraform.tfvars, so plan/apply will stop prompting.
+
+twilio_account_sid            = "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+twilio_auth_token             = "your_twilio_auth_token"
+cockroach_db_connection_string = "postgresql://user:password@host:26257/db?sslmode=verify-full"

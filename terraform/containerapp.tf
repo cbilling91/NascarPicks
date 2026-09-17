@@ -19,15 +19,15 @@ resource "azurerm_container_app_environment_dapr_component" "cockroach_db" {
   container_app_environment_id = azurerm_container_app_environment.nascar_aca_environment.id
   component_type               = "state.cockroachdb"
   version                      = "v1"
-  scopes = azurerm_container_app.nascar_aca.dapr[*].app_id
+  scopes                       = azurerm_container_app.nascar_aca.dapr[*].app_id
 
   secret {
-    name = "cockroach-db-connection-string"
+    name  = "cockroach-db-connection-string"
     value = var.cockroach_db_connection_string
   }
 
   metadata {
-    name  = "connectionString"
+    name        = "connectionString"
     secret_name = "cockroach-db-connection-string"
   }
 }
@@ -41,7 +41,7 @@ resource "azurerm_container_app" "nascar_aca" {
   template {
     container {
       name   = "helloworld-app"
-      image  = "ghcr.io/cbilling91/nascar-picks/front-end:047689b4"
+      image  = "ghcr.io/cbilling91/nascar-picks/front-end:42d10e9b"
       cpu    = 0.25
       memory = "0.5Gi"
 
@@ -54,7 +54,7 @@ resource "azurerm_container_app" "nascar_aca" {
     #revision_suffix = "nascarpicks-v5"
   }
 
-  secrets {
+  secret {
     name  = "cockroach-db-connection-string"
     value = var.cockroach_db_connection_string
   }
@@ -87,39 +87,39 @@ resource "azurerm_container_app_job" "nascar_aca_notifications" {
   template {
     container {
       name   = "nascar-notifications"
-      image  = "ghcr.io/cbilling91/nascar-picks/notifications:b4bbc4ab"
+      image  = "ghcr.io/cbilling91/nascar-picks/notifications:42d10e9b"
       cpu    = 0.25
       memory = "0.5Gi"
 
       env {
-        name = "CONNECTION_STRING"
+        name        = "CONNECTION_STRING"
         secret_name = "cockroach-db-connection-string"
       }
 
       env {
-        name = "TWILIO_ACCOUNT_SID"
+        name        = "TWILIO_ACCOUNT_SID"
         secret_name = "nascar-picks-twilio-account-sid"
       }
 
       env {
-        name = "TWILIO_AUTH_TOKEN"
+        name        = "TWILIO_AUTH_TOKEN"
         secret_name = "nascar-picks-twilio-auth-token"
       }
     }
   }
 
   secrets {
-    name = "cockroach-db-connection-string"
+    name  = "cockroach-db-connection-string"
     value = var.cockroach_db_connection_string
   }
 
   secrets {
-    name = "nascar-picks-twilio-account-sid"
+    name  = "nascar-picks-twilio-account-sid"
     value = var.twilio_account_sid
   }
 
   secrets {
-    name = "nascar-picks-twilio-auth-token"
+    name  = "nascar-picks-twilio-auth-token"
     value = var.twilio_auth_token
   }
 

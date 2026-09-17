@@ -1,11 +1,12 @@
 variable "twilio_account_sid" {
-    type = string
+  type = string
 }
 variable "twilio_auth_token" {
-    type = string
+  type      = string
+  sensitive = true
 }
 
 variable "cockroach_db_connection_string" {
-    type = string
-    sensitive = true
+  type      = string
+  sensitive = true
 }
