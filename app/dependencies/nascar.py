@@ -2,10 +2,12 @@ import requests
 from datetime import datetime, timedelta
 from typing import Generator, ClassVar, Type
 import json
+import os
 from functools import wraps
 import hashlib
 import base64
 
+import psycopg2
 from pydantic import BaseModel, Field
 from fastapi import Cookie, Response, HTTPException, Depends
 from dapr.clients import DaprClient
@@ -16,6 +18,12 @@ from app.models.nascar import ScheduleItem, Driver, DriverPoints, WeekendFeed, P
 
 dapr_client = DaprClient()
 STATE_STORE = 'nascar-cockroach-statestore'
+
+# Connection string for direct SQL access to the same CockroachDB database the
+# Dapr state store uses. Needed to dual-write picks in the new relational
+# format used by the Next.js app. Set via the CONNECTION_STRING env var, like
+# the notifications job (provided by the container app secret in production).
+RELATIONAL_CONNECTION_STRING = os.getenv("CONNECTION_STRING")
 
 # Get the current year for NASCAR data
 current_year = datetime.now().year
@@ -249,7 +257,66 @@ def publish_driver_picks(player_id, race_id, picks):
     dapr_client.save_state(STATE_STORE, key, value=json.dumps(payload), state_metadata={
         'contentType': 'application/json'
     })
+    try:
+        publish_driver_picks_relational(player_id, race_id, picks)
+    except Exception as e:
+        # Never let the new format write break the old pick flow
+        print(f"Failed to write picks in the new relational format: {e}")
     return
+
+
+def publish_driver_picks_relational(player_id, race_id, picks):
+    """Dual-write picks to the relational `picks` table used by the Next.js app.
+
+    The old format stores one JSON document per player/race in the Dapr state
+    store. The new format stores one row per player/race in the `picks` table
+    keyed by the profile UUID, with the NASCAR race id and one column per
+    picked NASCAR driver id.
+    """
+    if not RELATIONAL_CONNECTION_STRING:
+        print("CONNECTION_STRING is not set, skipping relational picks write")
+        return
+
+    picking_player = picks.player_select if picks.player_select else player_id
+    player = get_player(player_id=picking_player)
+    driver_ids = [int(driver_id) for driver_id in picks.search_select_multiple]
+
+    conn = psycopg2.connect(RELATIONAL_CONNECTION_STRING)
+    try:
+        with conn.cursor() as cur:
+            # Map the old-style player to a new profile by phone number,
+            # falling back to display name
+            cur.execute(
+                "SELECT id FROM profiles WHERE phone_number = %s",
+                (player.phone_number,)
+            )
+            profile = cur.fetchone()
+            if not profile:
+                cur.execute(
+                    "SELECT id FROM profiles WHERE display_name = %s",
+                    (player.name,)
+                )
+                profile = cur.fetchone()
+            if not profile:
+                print(
+                    f"No profile found for player {picking_player}, skipping relational picks write")
+                return
+
+            cur.execute(
+                """
+                INSERT INTO picks (user_id, race_id, driver_1_id, driver_2_id, driver_3_id, submitted_at)
+                VALUES (%s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (user_id, race_id) DO UPDATE
+                SET driver_1_id = EXCLUDED.driver_1_id,
+                    driver_2_id = EXCLUDED.driver_2_id,
+                    driver_3_id = EXCLUDED.driver_3_id,
+                    submitted_at = NOW()
+                """,
+                (str(profile[0]), int(race_id), driver_ids[0], driver_ids[1], driver_ids[2])
+            )
+            conn.commit()
+    finally:
+        conn.close()
 
 
 def get_driver_picks(race_id, player_id=None) -> PlayerPicks:

@@ -44,9 +44,19 @@ resource "azurerm_container_app" "nascar_aca" {
       image  = "ghcr.io/cbilling91/nascar-picks/front-end:047689b4"
       cpu    = 0.25
       memory = "0.5Gi"
+
+      env {
+        name        = "CONNECTION_STRING"
+        secret_name = "cockroach-db-connection-string"
+      }
     }
     min_replicas = 1
     #revision_suffix = "nascarpicks-v5"
+  }
+
+  secrets {
+    name  = "cockroach-db-connection-string"
+    value = var.cockroach_db_connection_string
   }
 
   ingress {

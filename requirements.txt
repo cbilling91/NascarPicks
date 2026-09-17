@@ -19,10 +19,11 @@ grpcio==1.60.0
 h11==0.14.0
 idna==2.10
 iniconfig==2.0.0
-multidict==6.0.4
+multidict==6.1.0
 packaging==23.2
 pluggy==1.3.0
 protobuf==4.25.2
+psycopg2-binary==2.9.9
 pydantic==2.5.3
 pydantic_core==2.14.6
 pytest==7.4.3

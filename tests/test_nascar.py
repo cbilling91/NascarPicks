@@ -1,11 +1,13 @@
 import unittest
+import json
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 from app.dependencies.nascar import (
     get_driver_points, calculate_points, is_playoff_race, has_race_started,
-    assign_playoff_points, calculate_position_points, calculate_stage_points
+    assign_playoff_points, calculate_position_points, calculate_stage_points,
+    publish_driver_picks, publish_driver_picks_relational
 )
-from app.models.nascar import LapTimes, PicksItem, PlayerPicks, StagePoints, DriverPoints, PickPoints, Driver, Player, StagePointsItem, Result
+from app.models.nascar import LapTimes, PicksItem, PlayerPicks, StagePoints, DriverPoints, PickPoints, Driver, DriverSelectForm, Player, StagePointsItem, Result
 
 
 class TestNascarFunctions(unittest.TestCase):
@@ -73,6 +75,139 @@ class TestNascarFunctions(unittest.TestCase):
 
         # Assertions
         self.assertEqual(points, (10, 1))
+
+
+    @patch('app.dependencies.nascar.RELATIONAL_CONNECTION_STRING', 'postgresql://test')
+    @patch('app.dependencies.nascar.get_player')
+    @patch('app.dependencies.nascar.psycopg2')
+    @patch('app.dependencies.nascar.dapr_client')
+    def test_publish_driver_picks_writes_both_formats(self, mock_dapr, mock_psycopg2, mock_get_player):
+        # Mock data
+        mock_get_player.return_value = Player(
+            hash='abc123',
+            id='player-chase-billing-9734765941',
+            name='Chase Billing',
+            phone_number='9734765941',
+            type='player',
+            admin=False
+        )
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (
+            '8ba427e0-d977-444d-a026-b20ab08c9720',)
+        mock_psycopg2.connect.return_value.cursor.return_value.__enter__.return_value = mock_cursor
+
+        form = DriverSelectForm(search_select_multiple=['4030', '1361', '4153'])
+
+        # Call function
+        publish_driver_picks('player-chase-billing-9734765941', '5386', form)
+
+        # Old format: JSON document written to the Dapr state store
+        mock_dapr.save_state.assert_called_once()
+        dapr_args = mock_dapr.save_state.call_args
+        self.assertEqual(
+            dapr_args.args[1], 'picks-player-chase-billing-9734765941-5386')
+        dapr_payload = json.loads(dapr_args.kwargs['value'])
+        self.assertEqual(dapr_payload['type'], 'picks')
+        self.assertEqual(dapr_payload['player'],
+                         'player-chase-billing-9734765941')
+        self.assertEqual(dapr_payload['race'], '5386')
+        self.assertEqual(dapr_payload['picks'], ['4030', '1361', '4153'])
+
+        # New format: profile looked up by phone number, then upserted row
+        executed_sql = [call.args[0]
+                        for call in mock_cursor.execute.call_args_list]
+        self.assertIn('SELECT id FROM profiles WHERE phone_number = %s',
+                      executed_sql[0])
+        self.assertTrue(any('INSERT INTO picks' in sql for sql in executed_sql))
+        insert_call = mock_cursor.execute.call_args_list[-1]
+        self.assertEqual(
+            insert_call.args[1],
+            ('8ba427e0-d977-444d-a026-b20ab08c9720', 5386, 4030, 1361, 4153)
+        )
+
+    @patch('app.dependencies.nascar.RELATIONAL_CONNECTION_STRING', 'postgresql://test')
+    @patch('app.dependencies.nascar.get_player')
+    @patch('app.dependencies.nascar.psycopg2')
+    @patch('app.dependencies.nascar.dapr_client')
+    def test_publish_driver_picks_admin_player_select_writes_both_formats(self, mock_dapr, mock_psycopg2, mock_get_player):
+        # Admin picking for another player should use the selected player
+        mock_get_player.return_value = Player(
+            hash='def456',
+            id='player-don-9739197737',
+            name='Don',
+            phone_number='9739197737',
+            type='player',
+            admin=False
+        )
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (
+            'b11e6dce-96a0-44f5-936b-ded3f58ea509',)
+        mock_psycopg2.connect.return_value.cursor.return_value.__enter__.return_value = mock_cursor
+
+        form = DriverSelectForm(
+            player_select='player-don-9739197737',
+            search_select_multiple=['4030', '1361', '4153']
+        )
+
+        # Call function as an admin
+        publish_driver_picks('player-chase-billing-9734765941', '5386', form)
+
+        # Old format uses the selected player in the key and payload
+        mock_dapr.save_state.assert_called_once()
+        dapr_args = mock_dapr.save_state.call_args
+        self.assertEqual(dapr_args.args[1], 'picks-player-don-9739197737-5386')
+        dapr_payload = json.loads(dapr_args.kwargs['value'])
+        self.assertEqual(dapr_payload['player'], 'player-don-9739197737')
+
+        # New format is written for the selected player's profile
+        insert_call = mock_cursor.execute.call_args_list[-1]
+        self.assertEqual(
+            insert_call.args[1],
+            ('b11e6dce-96a0-44f5-936b-ded3f58ea509', 5386, 4030, 1361, 4153)
+        )
+
+    @patch('app.dependencies.nascar.RELATIONAL_CONNECTION_STRING', 'postgresql://test')
+    @patch('app.dependencies.nascar.get_player')
+    @patch('app.dependencies.nascar.psycopg2')
+    @patch('app.dependencies.nascar.dapr_client')
+    def test_publish_driver_picks_relational_failure_does_not_break_old_format(self, mock_dapr, mock_psycopg2, mock_get_player):
+        # New format write failing must not prevent the old format write
+        mock_psycopg2.connect.side_effect = Exception('connection refused')
+
+        form = DriverSelectForm(search_select_multiple=['4030', '1361', '4153'])
+
+        # Call function
+        publish_driver_picks('player-chase-billing-9734765941', '5386', form)
+
+        # Old format write still happened
+        mock_dapr.save_state.assert_called_once()
+
+    @patch('app.dependencies.nascar.RELATIONAL_CONNECTION_STRING', 'postgresql://test')
+    @patch('app.dependencies.nascar.get_player')
+    @patch('app.dependencies.nascar.psycopg2')
+    def test_publish_driver_picks_relational_skips_unknown_profile(self, mock_psycopg2, mock_get_player):
+        # Players with no matching profile should be skipped, not crash
+        mock_get_player.return_value = Player(
+            hash='xyz789',
+            id='player-nobody-9999999999',
+            name='Nobody',
+            phone_number='9999999999',
+            type='player',
+            admin=False
+        )
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = None
+        mock_psycopg2.connect.return_value.cursor.return_value.__enter__.return_value = mock_cursor
+
+        form = DriverSelectForm(search_select_multiple=['4030', '1361', '4153'])
+
+        # Call function
+        publish_driver_picks_relational('player-nobody-9999999999', '5386', form)
+
+        # No insert was attempted
+        executed_sql = [call.args[0]
+                        for call in mock_cursor.execute.call_args_list]
+        self.assertFalse(any('INSERT INTO picks' in sql for sql in executed_sql))
 
 
 if __name__ == '__main__':
